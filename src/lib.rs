@@ -1,14 +1,11 @@
 use std::env::Args;
 use std::fs::read_to_string;
-use std::{
-    io::{self, prelude::*},
-    str,
-};
+use std::{io::prelude::*, str};
 
 use chrono::{DateTime, FixedOffset};
 use read_input::prelude::*;
 use regex::Regex;
-use termcolor::Color;
+use termcolor::{Color, ColorSpec, WriteColor};
 
 const COLORS: [&str; 8] = [
     "Black", "Blue", "Green", "Red", "Cyan", "Magenta", "Yellow", "White",
@@ -91,8 +88,12 @@ impl Task {
         }
     }
 
-    fn edit(&mut self) {
-        let operation = get_choices(&vec!["Change task name", "Change deadline"]);
+    fn edit(&mut self, categories: &Vec<Category>) {
+        let operation = get_choices(&vec![
+            "Change task name",
+            "Change deadline",
+            "Change category",
+        ]);
         match operation {
             1 => {
                 self.task = input().msg("New task name: ").get();
@@ -111,6 +112,11 @@ impl Task {
                 )
                 .unwrap();
             }
+            3 => {
+                let category_names = get_category_names(&categories);
+                let category_index = get_choices(&category_names);
+                self.category = category_names[category_index].to_string();
+            }
             _ => unreachable!(),
         }
     }
@@ -119,7 +125,7 @@ impl Task {
 fn edit(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
     match get_choices(&vec!["Category", "Task"]) {
         1 => category(categories, tasks),
-        2 => task(tasks),
+        2 => task(tasks, categories),
         _ => unreachable!(),
     };
 }
@@ -150,18 +156,18 @@ fn help() {
 fn display(categories: Vec<Category>, mut tasks: Vec<Task>) {
     tasks.sort_by(|t1, t2| t1.category.cmp(&t2.category));
     let rand = fastrand::f32();
-    let stdout = io::stdout();
-    let mut out = io::BufWriter::new(stdout.lock());
+    let mut color_stream = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
 
     for category in categories
         .iter()
         .filter(|category| category.probability >= rand)
     {
-        writeln!(out, "Category: {}", category.name).ok();
+        color_stream.set_color(ColorSpec::new().set_fg(Some(category.color)));
+        writeln!(color_stream, "Category: {}", category.name).ok();
         for task in &tasks {
             if task.category == category.name {
-                // O(tasks*categories) is fine lol
-                writeln!(out, "    {}: {}", task.deadline, task.task).ok();
+                // O(tasks * categories) is fine lol
+                writeln!(color_stream, "    {}: {}", task.deadline, task.task).ok();
             }
         }
     }
@@ -197,15 +203,9 @@ fn read(file: String) -> (Vec<Task>, Vec<Category>) {
 }
 
 fn category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
-    let category_names = {
-        let mut v: Vec<&str> = Vec::with_capacity(categories.len());
-        for category in categories.iter() {
-            v.push(category.name.as_str());
-        }
-        v
-    };
+    let category_names = get_category_names(&categories);
     match get_choices(&vec!["Add category", "Edit category", "Delete category"]) {
-        0 => {
+        1 => {
             let name = input::<String>().msg("Name: ").get();
             let probability = input::<f32>()
                 .msg("Probability: ")
@@ -219,11 +219,11 @@ fn category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
                 color,
             });
         }
-        1 => {
+        2 => {
             let category = get_choices(&category_names);
             categories[category - 1].edit();
         }
-        2 => {
+        3 => {
             let category_index = get_choices(&category_names) - 1;
             for task in tasks.into_iter() {
                 if task.category == category_names[category_index] {
@@ -236,11 +236,31 @@ fn category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
     };
 }
 
-fn task(tasks: &mut Vec<Task>) {
+fn task(tasks: &mut Vec<Task>, categories: &Vec<Category>) {
     match get_choices(&vec!["Add task", "Edit task", "Delete task"]) {
-        0 => {}
-        1 => {}
-        2 => {}
+        1 => {
+            ////let category_names = get_category_names(&categories);
+            ////let task = input::<String>().msg("Task name: ").get();
+            ////// FIXME
+            ////let category = input::<String>().msg("Category: ").add_err_test( |input_name| {
+            ////    for name in category_names {
+            ////        if input_name.as_str() == name {
+            ////            return true;
+            ////        }
+            ////    }
+            ////    false
+            ////}, "Given category does not exist, please create it").get();
+        }
+        2 => {
+            let task_names = get_task_names(tasks);
+            let task_index = get_choices(&task_names) - 1;
+            tasks[task_index].edit(categories);
+        }
+        3 => {
+            let task_names = get_task_names(tasks);
+            let task_index = get_choices(&task_names) - 1;
+            tasks.remove(task_index);
+        }
         _ => unreachable!(),
     };
 }
@@ -266,4 +286,20 @@ fn parse_color(color: &str) -> Result<Color, String> {
         "white" => Ok(Color::White),
         _ => Err("Invalid color".to_string()),
     }
+}
+
+fn get_category_names(categories: &Vec<Category>) -> Vec<&str> {
+    let mut v: Vec<&str> = Vec::with_capacity(categories.len());
+    for category in categories.iter() {
+        v.push(category.name.as_str());
+    }
+    v
+}
+
+fn get_task_names(tasks: &Vec<Task>) -> Vec<&str> {
+    let mut v: Vec<&str> = Vec::with_capacity(tasks.len());
+    for category in tasks.iter() {
+        v.push(category.task.as_str());
+    }
+    v
 }
