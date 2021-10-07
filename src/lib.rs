@@ -1,8 +1,10 @@
+#![warn(clippy::all, clippy::pedantic, clippy::cargo)]
 use std::env::Args;
 use std::fs::read_to_string;
+use std::fs::File;
 use std::{io::prelude::*, str};
 
-use chrono::{DateTime, FixedOffset};
+use chrono::NaiveDateTime;
 use read_input::prelude::*;
 use regex::Regex;
 use termcolor::{Color, ColorSpec, WriteColor};
@@ -10,8 +12,9 @@ use termcolor::{Color, ColorSpec, WriteColor};
 const COLORS: [&str; 8] = [
     "Black", "Blue", "Green", "Red", "Cyan", "Magenta", "Yellow", "White",
 ];
-const FMT: &str = "%Y %b %d %H:%M +0000";
-
+const FMT: &str = "%Y-%m-%d %H:%M";
+// TODO If color is empty assign white
+// TODO impl unclassified
 struct Category {
     name: String,
     probability: f32,
@@ -19,34 +22,54 @@ struct Category {
 }
 
 impl Category {
-    fn parse(line: &str) -> Self {
-        let category_regex = Regex::new(
-            r"^Category name: (?P<name>).+ color: (?P<color>).+ probability: (?P<probability>)\d{1,3}$",
-        ).unwrap();
-        let caps = category_regex.captures(line).unwrap();
+    fn parse(lines: &[&str]) -> Self {
+        let regex = vec![
+            Regex::new(r"Category name: (.+)").unwrap(),
+            Regex::new(r"color: (.+)").unwrap(),
+            Regex::new(r"probability: (.+)").unwrap(),
+        ];
 
-        let mut color;
-        let color_result = parse_color(caps.name("color").unwrap().as_str());
+        let name = regex[0]
+            .captures(lines[0])
+            .unwrap()
+            .get(1)
+            .unwrap()
+            .as_str()
+            .to_owned();
+
+        let color;
+        let color_result = parse_color(
+            regex[1]
+                .captures(lines[1])
+                .unwrap()
+                .get(1)
+                .unwrap()
+                .as_str(),
+        );
+
         if let Ok(parsed_color) = color_result {
             color = parsed_color;
         } else {
-            panic!("{} at {}", color_result.err().unwrap(), line);
+            panic!("{} at {}", color_result.err().unwrap(), lines[1]);
         }
 
+        let probability = regex[2]
+            .captures(lines[2])
+            .unwrap()
+            .get(1)
+            .unwrap()
+            .as_str()
+            .parse::<f32>()
+            .unwrap();
         Self {
-            name: caps.name("name").unwrap().as_str().to_string(),
-            probability: caps
-                .name("probability")
-                .unwrap()
-                .as_str()
-                .parse::<f32>()
-                .unwrap(),
+            name,
+            probability,
             color,
         }
     }
 
     fn edit(&mut self) {
-        let operation = get_choices(&vec!["Change name", "Change probability", "Change color"]);
+        let operation = get_choices(&["Change name", "Change probability", "Change color"]);
         match operation {
             1 => {
                 self.name = input().msg("New name: ").get();
@@ -54,7 +77,7 @@ impl Category {
             2 => {
                 self.probability = input::<f32>()
                     .msg("New probability: ")
-                    .add_err_test(|x| x >= &0.0 && x <= &1.0, "Invalid probability")
+                    .add_err_test(|x| (&0.0..=&1.0).contains(&x), "Invalid probability")
                     .get();
             }
             3 => {
@@ -68,54 +91,65 @@ impl Category {
 
 struct Task {
     task: String,
-    deadline: DateTime<FixedOffset>,
+    deadline: Option<NaiveDateTime>,
     category: String,
 }
 
 impl Task {
-    fn parse(line: &str, category: String) -> Self {
-        let task_regex = Regex::new(
-            r"^    Task name: (?P<name>).+ deadline: (?P<deadline>)\d{4}-\d{2}-\d{2} \d{2}:\d{2}$",
-        )
-        .unwrap();
+    fn parse(lines: &[&str], category: String) -> Self {
+        let regex = vec![
+            Regex::new(r"^    Task name: (.+)$").unwrap(),
+            Regex::new(r"^         deadline: (.+)$").unwrap(),
+        ];
 
-        let caps = task_regex.captures(line).unwrap();
-        Task {
-            task: caps.name("name").unwrap().as_str().to_string(),
-            deadline: DateTime::parse_from_str(caps.name("deadline").unwrap().as_str(), FMT)
+        let captured_deadline = regex[1]
+            .captures(lines[1])
+            .unwrap()
+            .get(1)
+            .unwrap()
+            .as_str()
+            .trim();
+        let mut deadline = None;
+        if captured_deadline != "none" {
+            deadline = Some(
+                NaiveDateTime::parse_from_str(
+                    regex[1]
+                        .captures(lines[1])
+                        .unwrap()
+                        .get(1)
+                        .unwrap()
+                        .as_str(),
+                    FMT,
+                )
                 .unwrap(),
+            );
+        }
+        Self {
+            task: regex[0]
+                .captures(lines[0])
+                .unwrap()
+                .get(1)
+                .unwrap()
+                .as_str()
+                .to_string(),
+            deadline,
             category,
         }
     }
 
-    fn edit(&mut self, categories: &Vec<Category>) {
-        let operation = get_choices(&vec![
-            "Change task name",
-            "Change deadline",
-            "Change category",
-        ]);
+    fn edit(&mut self, categories: &[Category]) {
+        let operation = get_choices(&["Change task name", "Change deadline", "Change category"]);
         match operation {
             1 => {
                 self.task = input().msg("New task name: ").get();
             }
             2 => {
-                self.deadline = DateTime::parse_from_str(
-                    input::<String>()
-                        .msg("New deadline")
-                        .add_err_test(
-                            |x| DateTime::parse_from_str(x.as_str(), FMT).is_ok(),
-                            "Invalid deadline",
-                        )
-                        .get()
-                        .as_str(),
-                    FMT,
-                )
-                .unwrap();
+                self.deadline = get_deadline("New deadline: ");
             }
             3 => {
-                let category_names = get_category_names(&categories);
+                let category_names = get_category_names(categories);
                 let category_index = get_choices(&category_names);
-                self.category = category_names[category_index].to_string();
+                self.category = category_names[category_index - 1].to_string();
             }
             _ => unreachable!(),
         }
@@ -123,25 +157,61 @@ impl Task {
 }
 
 fn edit(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
-    match get_choices(&vec!["Category", "Task"]) {
-        1 => category(categories, tasks),
-        2 => task(tasks, categories),
+    match get_choices(&["Category", "Task"]) {
+        1 => edit_category(categories, tasks),
+        2 => edit_task(tasks, categories),
         _ => unreachable!(),
     };
 }
 
 pub fn run(args: &mut Args) {
+    args.next();
     if let Some(arg) = args.next() {
         match arg.as_str() {
             "-e" => {
-                let (mut tasks, mut categories) = read("~/todo.txt".to_string());
-                edit(&mut categories, &mut tasks);
+                let (mut tasks, mut categories) = read("/home/p00f/todo.txt".to_string());
+                loop {
+                    edit(&mut categories, &mut tasks);
+                    let cont = input::<String>()
+                        .msg("Continue editing? [y/n]")
+                        .add_err_test(
+                            |str| str.as_str() == "y" || str.as_str() == "n",
+                            "Please enter y or n",
+                        )
+                        .get();
+                    if cont == "n" {
+                        break;
+                    }
+                }
+                save(&categories, &tasks);
             }
             _ => help(),
         };
     } else {
-        let (tasks, categories) = read("~/todo.txt".to_string());
-        display(categories, tasks);
+        let (tasks, categories) = read("/home/p00f/todo.txt".to_string());
+        display(&categories, tasks);
+    }
+}
+
+fn save(categories: &[Category], tasks: &[Task]) {
+    let mut out = File::create("/home/p00f/todo.txt").unwrap();
+    for category in categories {
+        writeln!(
+            out,
+            "Category name: {}\ncolor: {:?}\nprobability: {}",
+            category.name, category.color, category.probability
+        )
+        .ok();
+        for task in tasks {
+            if task.category == category.name {
+                writeln!(
+                    out,
+                    "    Task name: {}\n         deadline: {:?}",
+                    task.task, task.deadline
+                )
+                .ok();
+            }
+        }
     }
 }
 
@@ -153,7 +223,7 @@ fn help() {
     println!("{}", help);
 }
 
-fn display(categories: Vec<Category>, mut tasks: Vec<Task>) {
+fn display(categories: &[Category], mut tasks: Vec<Task>) {
     tasks.sort_by(|t1, t2| t1.category.cmp(&t2.category));
     let rand = fastrand::f32();
     let mut color_stream = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
@@ -162,12 +232,22 @@ fn display(categories: Vec<Category>, mut tasks: Vec<Task>) {
         .iter()
         .filter(|category| category.probability >= rand)
     {
-        color_stream.set_color(ColorSpec::new().set_fg(Some(category.color)));
+        color_stream
+            .set_color(ColorSpec::new().set_fg(Some(category.color)))
+            .ok();
         writeln!(color_stream, "Category: {}", category.name).ok();
         for task in &tasks {
             if task.category == category.name {
                 // O(tasks * categories) is fine lol
-                writeln!(color_stream, "    {}: {}", task.deadline, task.task).ok();
+                writeln!(
+                    color_stream,
+                    "    {}: {}",
+                    task.deadline.map_or("none".to_string(), |deadline| deadline
+                        .format(FMT)
+                        .to_string()),
+                    task.task
+                )
+                .ok();
             }
         }
     }
@@ -177,39 +257,42 @@ fn read(file: String) -> (Vec<Task>, Vec<Category>) {
     let mut categories: Vec<Category> = vec![];
     let mut tasks = vec![];
     let lines = read_to_string(file).expect("Could not read file");
-    let lines = lines.lines();
+    let lines: Vec<&str> = lines.lines().collect();
 
-    let category_regex = Regex::new(
-        r"^Category name: (?P<name>).+ color: (?P<color>).+ probability: (?P<probability>)\d{1,3}$",
-    )
-    .unwrap();
-    let task_regex = Regex::new(
-        r"^    Task name: (?P<name>).+ deadline: (?P<deadline>)\d{4}-\d{2}-\d{2} \d{2}:\d{2}$",
-    )
-    .unwrap();
-    let empty_regex = Regex::new(r"^$").unwrap();
+    let category_regex = vec![
+        Regex::new(r"^Category name: .+$").unwrap(),
+        Regex::new(r"^color: .+$").unwrap(),
+        Regex::new(r"^probability: \d\.\d{2}$").unwrap(),
+    ];
+    let task_regex = vec![
+        Regex::new(r"^    Task name: .+$").unwrap(),
+        Regex::new(r"^         deadline: \d{4}-\d{2}-\d{2} \d{2}:\d{2}$").unwrap(),
+    ];
 
-    for line in lines {
-        if category_regex.is_match(line) {
-            categories.push(Category::parse(line));
-        } else if task_regex.is_match(line) {
-            let category = categories[categories.len() - 1].name.to_owned();
-            tasks.push(Task::parse(line, category));
-        } else if !empty_regex.is_match(line) {
-            panic!("Malformed file at {}", line);
+    for line_num in 0..lines.len() {
+        if category_regex[0].is_match(lines[line_num])
+            && category_regex[1].is_match(lines[line_num + 1])
+            && category_regex[2].is_match(lines[line_num + 2])
+        {
+            categories.push(Category::parse(&lines[line_num..=line_num + 2]));
+        } else if task_regex[0].is_match(lines[line_num])
+            && task_regex[1].is_match(lines[line_num + 1])
+        {
+            let category = categories[categories.len() - 1].name.clone();
+            tasks.push(Task::parse(&lines[line_num..=line_num + 1], category));
         }
     }
     (tasks, categories)
 }
 
-fn category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
-    let category_names = get_category_names(&categories);
-    match get_choices(&vec!["Add category", "Edit category", "Delete category"]) {
+fn edit_category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
+    let category_names = get_category_names(categories);
+    match get_choices(&["Add category", "Edit category", "Delete category"]) {
         1 => {
             let name = input::<String>().msg("Name: ").get();
             let probability = input::<f32>()
                 .msg("Probability: ")
-                .add_err_test(|x| x >= &0.0 && x <= &1.0, "Invalid probability")
+                .add_err_test(|x| (&0.0..=&1.0).contains(&x), "Invalid probability")
                 .get();
             println!("Color: ");
             let color = parse_color(COLORS[get_choices(&COLORS.to_vec()) - 1]).unwrap();
@@ -225,7 +308,7 @@ fn category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
         }
         3 => {
             let category_index = get_choices(&category_names) - 1;
-            for task in tasks.into_iter() {
+            for task in tasks.iter_mut() {
                 if task.category == category_names[category_index] {
                     task.category = String::from("Unclassified");
                 }
@@ -236,20 +319,18 @@ fn category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
     };
 }
 
-fn task(tasks: &mut Vec<Task>, categories: &Vec<Category>) {
-    match get_choices(&vec!["Add task", "Edit task", "Delete task"]) {
+fn edit_task(tasks: &mut Vec<Task>, categories: &[Category]) {
+    match get_choices(&["Add task", "Edit task", "Delete task"]) {
         1 => {
-            ////let category_names = get_category_names(&categories);
-            ////let task = input::<String>().msg("Task name: ").get();
-            ////// FIXME
-            ////let category = input::<String>().msg("Category: ").add_err_test( |input_name| {
-            ////    for name in category_names {
-            ////        if input_name.as_str() == name {
-            ////            return true;
-            ////        }
-            ////    }
-            ////    false
-            ////}, "Given category does not exist, please create it").get();
+            let category_number = get_choices(&get_category_names(categories));
+            let category = get_category_names(categories)[category_number - 1].to_string();
+            let task = input::<String>().msg("Task name: ").get();
+            let deadline = get_deadline("Deadline: ");
+            tasks.push(Task {
+                task,
+                deadline,
+                category,
+            });
         }
         2 => {
             let task_names = get_task_names(tasks);
@@ -265,7 +346,7 @@ fn task(tasks: &mut Vec<Task>, categories: &Vec<Category>) {
     };
 }
 
-fn get_choices(choices: &Vec<&str>) -> usize {
+fn get_choices(choices: &[&str]) -> usize {
     for (iteration, choice) in choices.iter().enumerate() {
         println!("{}: {}", iteration + 1, choice);
     }
@@ -288,7 +369,7 @@ fn parse_color(color: &str) -> Result<Color, String> {
     }
 }
 
-fn get_category_names(categories: &Vec<Category>) -> Vec<&str> {
+fn get_category_names(categories: &[Category]) -> Vec<&str> {
     let mut v: Vec<&str> = Vec::with_capacity(categories.len());
     for category in categories.iter() {
         v.push(category.name.as_str());
@@ -296,10 +377,25 @@ fn get_category_names(categories: &Vec<Category>) -> Vec<&str> {
     v
 }
 
-fn get_task_names(tasks: &Vec<Task>) -> Vec<&str> {
+fn get_task_names(tasks: &[Task]) -> Vec<&str> {
     let mut v: Vec<&str> = Vec::with_capacity(tasks.len());
     for category in tasks.iter() {
         v.push(category.task.as_str());
     }
     v
+}
+
+fn get_deadline(msg: &str) -> Option<NaiveDateTime> {
+    let input = input::<String>()
+        .msg(msg)
+        .add_err_test(
+            |x| NaiveDateTime::parse_from_str(x.as_str().trim(), FMT).is_ok() || x.trim() == "",
+            "Invalid deadline",
+        )
+        .get();
+    if input.as_str().trim() == "" {
+        None
+    } else {
+        Some(NaiveDateTime::parse_from_str(input.as_str(), FMT).unwrap())
+    }
 }
