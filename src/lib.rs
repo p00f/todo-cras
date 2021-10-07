@@ -52,7 +52,8 @@ impl Category {
         if let Ok(parsed_color) = color_result {
             color = parsed_color;
         } else {
-            panic!("{} at {}", color_result.err().unwrap(), lines[1]);
+            println!("{} at {}", color_result.err().unwrap(), lines[1]);
+            std::process::exit(1);
         }
 
         let probability = regex[2]
@@ -203,11 +204,15 @@ pub fn run(args: &mut Args) {
                 save(&categories, &tasks);
                 screen.flush().unwrap();
             }
+            "-p" => {
+                let (tasks, categories) = read("/home/p00f/todo.txt".to_string());
+                display(&categories, tasks, true);
+            }
             _ => help(),
         };
     } else {
         let (tasks, categories) = read("/home/p00f/todo.txt".to_string());
-        display(&categories, tasks);
+        display(&categories, tasks, false);
     }
 }
 
@@ -245,14 +250,20 @@ fn help() {
     println!("{}", help);
 }
 
-fn display(categories: &[Category], mut tasks: Vec<Task>) {
+fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
     tasks.sort_by(|t1, t2| match (t1.deadline, t2.deadline) {
         (Some(d1), Some(d2)) => d1.cmp(&d2).reverse(),
-        (Some(d1), None) => Ordering::Less,
-        (None, Some(d2)) => Ordering::Greater,
+        (Some(_d1), None) => Ordering::Less,
+        (None, Some(_d2)) => Ordering::Greater,
         (None, None) => Ordering::Equal,
     });
-    let rand = fastrand::f32();
+    let rand = {
+        if probability {
+            fastrand::f32()
+        } else {
+            0.00
+        }
+    };
     let mut color_stream = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
 
     for category in categories
@@ -290,7 +301,7 @@ fn read(file: String) -> (Vec<Task>, Vec<Category>) {
     let category_regex = vec![
         Regex::new(r"^Category name: .+$").unwrap(),
         Regex::new(r"^color: .+$").unwrap(),
-        Regex::new(r"^probability: \d\.\d{2}$").unwrap(),
+        Regex::new(r"^probability: .+$").unwrap(),
     ];
     let task_regex = vec![
         Regex::new(r"^    Task name: .+$").unwrap(),
@@ -302,12 +313,12 @@ fn read(file: String) -> (Vec<Task>, Vec<Category>) {
             && category_regex[1].is_match(lines[line_num + 1])
             && category_regex[2].is_match(lines[line_num + 2])
         {
-            categories.push(Category::parse(&lines[line_num..=line_num + 2]));
+            categories.push(Category::parse(&lines[line_num..(line_num + 3)]));
         } else if task_regex[0].is_match(lines[line_num])
             && task_regex[1].is_match(lines[line_num + 1])
         {
             let category = categories[categories.len() - 1].name.clone();
-            tasks.push(Task::parse(&lines[line_num..=line_num + 1], category));
+            tasks.push(Task::parse(&lines[line_num..(line_num + 2)], category));
         }
     }
     (tasks, categories)
@@ -341,6 +352,15 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
         3 => {
             clear();
             let category_index = get_choices(&category_names) - 1;
+            if category_names[category_index] == "Unclassified" {
+                let mut color_stream =
+                    termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
+                color_stream
+                    .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
+                    .ok();
+                writeln!(color_stream, "Cannot delete special category Unclassified").ok();
+                std::process::exit(1);
+            }
             clear();
             for task in tasks.iter_mut() {
                 if task.category == category_names[category_index] {
