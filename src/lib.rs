@@ -1,4 +1,5 @@
-#![warn(clippy::all, clippy::pedantic, clippy::cargo)]
+#![warn(clippy::all, clippy::pedantic)]
+
 use std::env::Args;
 use std::fs::read_to_string;
 use std::fs::File;
@@ -13,8 +14,8 @@ const COLORS: [&str; 8] = [
     "Black", "Blue", "Green", "Red", "Cyan", "Magenta", "Yellow", "White",
 ];
 const FMT: &str = "%Y-%m-%d %H:%M";
-// TODO If color is empty assign white
-// TODO impl unclassified
+
+#[derive(Debug)]
 struct Category {
     name: String,
     probability: f32,
@@ -89,6 +90,7 @@ impl Category {
     }
 }
 
+#[derive(Debug)]
 struct Task {
     task: String,
     deadline: Option<NaiveDateTime>,
@@ -99,7 +101,7 @@ impl Task {
     fn parse(lines: &[&str], category: String) -> Self {
         let regex = vec![
             Regex::new(r"^    Task name: (.+)$").unwrap(),
-            Regex::new(r"^         deadline: (.+)$").unwrap(),
+            Regex::new(r#"^         deadline: "(.+)"$"#).unwrap(),
         ];
 
         let captured_deadline = regex[1]
@@ -207,7 +209,11 @@ fn save(categories: &[Category], tasks: &[Task]) {
                 writeln!(
                     out,
                     "    Task name: {}\n         deadline: {:?}",
-                    task.task, task.deadline
+                    task.task,
+                    task.deadline.map_or_else(
+                        || "none".to_string(),
+                        |deadline| deadline.format(FMT).to_string()
+                    )
                 )
                 .ok();
             }
@@ -237,6 +243,7 @@ fn display(categories: &[Category], mut tasks: Vec<Task>) {
             .ok();
         writeln!(color_stream, "Category: {}", category.name).ok();
         for task in &tasks {
+            //println!("{:?}", task);
             if task.category == category.name {
                 // O(tasks * categories) is fine lol
                 writeln!(
@@ -266,7 +273,7 @@ fn read(file: String) -> (Vec<Task>, Vec<Category>) {
     ];
     let task_regex = vec![
         Regex::new(r"^    Task name: .+$").unwrap(),
-        Regex::new(r"^         deadline: \d{4}-\d{2}-\d{2} \d{2}:\d{2}$").unwrap(),
+        Regex::new(r#"^         deadline: "(\d{4}-\d{2}-\d{2} \d{2}:\d{2})"|"none"$"#).unwrap(),
     ];
 
     for line_num in 0..lines.len() {
