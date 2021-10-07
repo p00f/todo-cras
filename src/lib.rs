@@ -1,5 +1,6 @@
 #![warn(clippy::all, clippy::pedantic)]
 
+use std::cmp::Ordering;
 use std::env::Args;
 use std::fs::read_to_string;
 use std::fs::File;
@@ -9,13 +10,13 @@ use chrono::NaiveDateTime;
 use read_input::prelude::*;
 use regex::Regex;
 use termcolor::{Color, ColorSpec, WriteColor};
+use termion::screen::AlternateScreen;
 
 const COLORS: [&str; 8] = [
     "Black", "Blue", "Green", "Red", "Cyan", "Magenta", "Yellow", "White",
 ];
 const FMT: &str = "%Y-%m-%d %H:%M";
 
-#[derive(Debug)]
 struct Category {
     name: String,
     probability: f32,
@@ -73,24 +74,27 @@ impl Category {
         let operation = get_choices(&["Change name", "Change probability", "Change color"]);
         match operation {
             1 => {
+                clear();
                 self.name = input().msg("New name: ").get();
             }
             2 => {
+                clear();
                 self.probability = input::<f32>()
                     .msg("New probability: ")
                     .add_err_test(|x| (&0.0..=&1.0).contains(&x), "Invalid probability")
                     .get();
             }
             3 => {
+                clear();
                 println!("New color: ");
                 self.color = parse_color(COLORS[get_choices(&COLORS.to_vec()) - 1]).unwrap();
+                clear();
             }
             _ => unreachable!(),
         }
     }
 }
 
-#[derive(Debug)]
 struct Task {
     task: String,
     deadline: Option<NaiveDateTime>,
@@ -143,14 +147,18 @@ impl Task {
         let operation = get_choices(&["Change task name", "Change deadline", "Change category"]);
         match operation {
             1 => {
+                clear();
                 self.task = input().msg("New task name: ").get();
             }
             2 => {
+                clear();
                 self.deadline = get_deadline("New deadline: ");
             }
             3 => {
+                clear();
                 let category_names = get_category_names(categories);
                 let category_index = get_choices(&category_names);
+                clear();
                 self.category = category_names[category_index - 1].to_string();
             }
             _ => unreachable!(),
@@ -160,8 +168,14 @@ impl Task {
 
 fn edit(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
     match get_choices(&["Category", "Task"]) {
-        1 => edit_category(categories, tasks),
-        2 => edit_task(tasks, categories),
+        1 => {
+            clear();
+            edit_category(categories, tasks);
+        }
+        2 => {
+            clear();
+            edit_task(tasks, categories);
+        }
         _ => unreachable!(),
     };
 }
@@ -171,11 +185,12 @@ pub fn run(args: &mut Args) {
     if let Some(arg) = args.next() {
         match arg.as_str() {
             "-e" => {
+                let mut screen = AlternateScreen::from(std::io::stdout());
                 let (mut tasks, mut categories) = read("/home/p00f/todo.txt".to_string());
                 loop {
                     edit(&mut categories, &mut tasks);
                     let cont = input::<String>()
-                        .msg("Continue editing? [y/n]")
+                        .msg("Continue editing? [y/n] ")
                         .add_err_test(
                             |str| str.as_str() == "y" || str.as_str() == "n",
                             "Please enter y or n",
@@ -186,6 +201,7 @@ pub fn run(args: &mut Args) {
                     }
                 }
                 save(&categories, &tasks);
+                screen.flush().unwrap();
             }
             _ => help(),
         };
@@ -230,7 +246,12 @@ fn help() {
 }
 
 fn display(categories: &[Category], mut tasks: Vec<Task>) {
-    tasks.sort_by(|t1, t2| t1.category.cmp(&t2.category));
+    tasks.sort_by(|t1, t2| match (t1.deadline, t2.deadline) {
+        (Some(d1), Some(d2)) => d1.cmp(&d2).reverse(),
+        (Some(d1), None) => Ordering::Less,
+        (None, Some(d2)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    });
     let rand = fastrand::f32();
     let mut color_stream = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
 
@@ -241,17 +262,17 @@ fn display(categories: &[Category], mut tasks: Vec<Task>) {
         color_stream
             .set_color(ColorSpec::new().set_fg(Some(category.color)))
             .ok();
-        writeln!(color_stream, "Category: {}", category.name).ok();
+        writeln!(color_stream, "{}", category.name).ok();
         for task in &tasks {
-            //println!("{:?}", task);
             if task.category == category.name {
                 // O(tasks * categories) is fine lol
                 writeln!(
                     color_stream,
                     "    {}: {}",
-                    task.deadline.map_or("none".to_string(), |deadline| deadline
-                        .format(FMT)
-                        .to_string()),
+                    task.deadline
+                        .map_or("No deadline".to_string(), |deadline| deadline
+                            .format(FMT)
+                            .to_string()),
                     task.task
                 )
                 .ok();
@@ -296,6 +317,7 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
     let category_names = get_category_names(categories);
     match get_choices(&["Add category", "Edit category", "Delete category"]) {
         1 => {
+            clear();
             let name = input::<String>().msg("Name: ").get();
             let probability = input::<f32>()
                 .msg("Probability: ")
@@ -303,6 +325,7 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
                 .get();
             println!("Color: ");
             let color = parse_color(COLORS[get_choices(&COLORS.to_vec()) - 1]).unwrap();
+            clear();
             categories.push(Category {
                 name,
                 probability,
@@ -310,15 +333,26 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
             });
         }
         2 => {
+            clear();
             let category = get_choices(&category_names);
+            clear();
             categories[category - 1].edit();
         }
         3 => {
+            clear();
             let category_index = get_choices(&category_names) - 1;
+            clear();
             for task in tasks.iter_mut() {
                 if task.category == category_names[category_index] {
                     task.category = String::from("Unclassified");
                 }
+            }
+            if !category_names.iter().any(|v| v == &"Unclassified") {
+                categories.push(Category {
+                    name: "Unclassified".to_string(),
+                    probability: 1.00,
+                    color: Color::White,
+                });
             }
             categories.remove(category_index);
         }
@@ -329,7 +363,9 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
 fn edit_task(tasks: &mut Vec<Task>, categories: &[Category]) {
     match get_choices(&["Add task", "Edit task", "Delete task"]) {
         1 => {
+            clear();
             let category_number = get_choices(&get_category_names(categories));
+            clear();
             let category = get_category_names(categories)[category_number - 1].to_string();
             let task = input::<String>().msg("Task name: ").get();
             let deadline = get_deadline("Deadline: ");
@@ -340,13 +376,17 @@ fn edit_task(tasks: &mut Vec<Task>, categories: &[Category]) {
             });
         }
         2 => {
+            clear();
             let task_names = get_task_names(tasks);
             let task_index = get_choices(&task_names) - 1;
+            clear();
             tasks[task_index].edit(categories);
         }
         3 => {
+            clear();
             let task_names = get_task_names(tasks);
             let task_index = get_choices(&task_names) - 1;
+            clear();
             tasks.remove(task_index);
         }
         _ => unreachable!(),
@@ -405,4 +445,12 @@ fn get_deadline(msg: &str) -> Option<NaiveDateTime> {
     } else {
         Some(NaiveDateTime::parse_from_str(input.as_str(), FMT).unwrap())
     }
+}
+
+fn clear() {
+    assert!(std::process::Command::new("cls")
+        .status()
+        .or_else(|_| std::process::Command::new("clear").status())
+        .unwrap()
+        .success());
 }
