@@ -1,12 +1,15 @@
 #![warn(clippy::all, clippy::pedantic)]
 
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::env::Args;
+use std::ffi::OsString;
 use std::fs::read_to_string;
 use std::fs::File;
 use std::{io::prelude::*, str};
 
 use chrono::NaiveDateTime;
+use home::home_dir;
 use read_input::prelude::*;
 use regex::Regex;
 use termcolor::{Color, ColorSpec, WriteColor};
@@ -183,11 +186,16 @@ fn edit(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
 
 pub fn run(args: &mut Args) {
     args.next();
+    let file = std::env::var_os("TODO_FILE").map_or_else(
+        || home_dir().unwrap().join("todo.txt").into_os_string(),
+        |var| var,
+    );
     if let Some(arg) = args.next() {
         match arg.as_str() {
             "-e" => {
                 let mut screen = AlternateScreen::from(std::io::stdout());
-                let (mut tasks, mut categories) = read("/home/p00f/todo.txt".to_string());
+                clear();
+                let (mut tasks, mut categories) = read(&file);
                 loop {
                     edit(&mut categories, &mut tasks);
                     let cont = input::<String>()
@@ -201,23 +209,23 @@ pub fn run(args: &mut Args) {
                         break;
                     }
                 }
-                save(&categories, &tasks);
+                save(&categories, &tasks, file);
                 screen.flush().unwrap();
             }
             "-p" => {
-                let (tasks, categories) = read("/home/p00f/todo.txt".to_string());
+                let (tasks, categories) = read(&file);
                 display(&categories, tasks, true);
             }
             _ => help(),
         };
     } else {
-        let (tasks, categories) = read("/home/p00f/todo.txt".to_string());
+        let (tasks, categories) = read(&file);
         display(&categories, tasks, false);
     }
 }
 
-fn save(categories: &[Category], tasks: &[Task]) {
-    let mut out = File::create("/home/p00f/todo.txt").unwrap();
+fn save(categories: &[Category], tasks: &[Task], file: OsString) {
+    let mut out = File::create(file).unwrap();
     for category in categories {
         writeln!(
             out,
@@ -266,9 +274,14 @@ fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
     };
     let mut color_stream = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
 
-    for category in categories
-        .iter()
-        .filter(|category| category.probability >= rand)
+    let mut has_task = HashSet::new(); // only
+    for task in &tasks {
+        // display
+        has_task.insert(&task.category); // non-empty
+    } // categories
+    for category in categories                                                                // whose probability
+        .iter()                                                                               // is greater than `rand`
+        .filter(|category| category.probability >= rand && has_task.contains(&category.name))
     {
         color_stream
             .set_color(ColorSpec::new().set_fg(Some(category.color)))
@@ -292,7 +305,7 @@ fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
     }
 }
 
-fn read(file: String) -> (Vec<Task>, Vec<Category>) {
+fn read(file: &OsString) -> (Vec<Task>, Vec<Category>) {
     let mut categories: Vec<Category> = vec![];
     let mut tasks = vec![];
     let lines = read_to_string(file).expect("Could not read file");
@@ -320,6 +333,13 @@ fn read(file: String) -> (Vec<Task>, Vec<Category>) {
             let category = categories[categories.len() - 1].name.clone();
             tasks.push(Task::parse(&lines[line_num..(line_num + 2)], category));
         }
+    }
+    if !categories.iter().any(|c| c.name == "Unclassified") {
+        categories.push(Category {
+            name: "Unclassified".to_string(),
+            probability: 1.00,
+            color: Color::White,
+        });
     }
     (tasks, categories)
 }
