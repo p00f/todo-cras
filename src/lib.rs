@@ -28,7 +28,7 @@ struct Category {
 
 impl Category {
     fn parse(lines: &[&str]) -> Self {
-        let regex = vec![
+        let regex = [
             Regex::new(r"Category name: (.+)").unwrap(),
             Regex::new(r"color: (.+)").unwrap(),
             Regex::new(r"probability: (.+)").unwrap(),
@@ -106,8 +106,8 @@ struct Task {
 }
 
 impl Task {
-    fn parse(lines: &[&str], category: String) -> Self {
-        let regex = vec![
+    fn parse(lines: &[&str], category: &str) -> Self {
+        let regex = [
             Regex::new(r"^    Task name: (.+)$").unwrap(),
             Regex::new(r#"^         deadline: "(.+)"$"#).unwrap(),
         ];
@@ -143,7 +143,7 @@ impl Task {
                 .as_str()
                 .to_string(),
             deadline,
-            category,
+            category: category.to_owned(),
         }
     }
 
@@ -306,17 +306,17 @@ fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
 }
 
 fn read(file: &OsString) -> (Vec<Task>, Vec<Category>) {
-    let mut categories: Vec<Category> = vec![];
+    let mut categories = vec![];
     let mut tasks = vec![];
     let lines = read_to_string(file).expect("Could not read file");
     let lines: Vec<&str> = lines.lines().collect();
 
-    let category_regex = vec![
+    let category_regex = [
         Regex::new(r"^Category name: .+$").unwrap(),
         Regex::new(r"^color: .+$").unwrap(),
         Regex::new(r"^probability: .+$").unwrap(),
     ];
-    let task_regex = vec![
+    let task_regex = [
         Regex::new(r"^    Task name: .+$").unwrap(),
         Regex::new(r#"^         deadline: "(\d{4}-\d{2}-\d{2} \d{2}:\d{2})"|"none"$"#).unwrap(),
     ];
@@ -331,7 +331,7 @@ fn read(file: &OsString) -> (Vec<Task>, Vec<Category>) {
             && task_regex[1].is_match(lines[line_num + 1])
         {
             let category = categories[categories.len() - 1].name.clone();
-            tasks.push(Task::parse(&lines[line_num..(line_num + 2)], category));
+            tasks.push(Task::parse(&lines[line_num..(line_num + 2)], &category));
         }
     }
     if !categories.iter().any(|c| c.name == "Unclassified") {
@@ -344,7 +344,7 @@ fn read(file: &OsString) -> (Vec<Task>, Vec<Category>) {
     (tasks, categories)
 }
 
-fn edit_category(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
+fn edit_category(categories: &mut Vec<Category>, tasks: &mut [Task]) {
     let category_names = get_category_names(categories);
     match get_choices(&["Add category", "Edit category", "Delete category"]) {
         1 => {
