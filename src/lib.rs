@@ -33,13 +33,7 @@ impl Category {
         )
         .unwrap();
 
-        let name = regex
-            .captures(line)
-            .unwrap()
-            .name("name")
-            .unwrap()
-            .as_str()
-            .to_owned();
+        let name = regex.captures(line).unwrap().name("name").unwrap().as_str();
 
         let color = parse_color(
             regex
@@ -67,7 +61,7 @@ impl Category {
         );
 
         Ok(Self {
-            name,
+            name: String::from(name),
             probability,
             color,
         })
@@ -154,7 +148,7 @@ impl Task {
                 let category_names = get_category_names(categories);
                 let category_index = get_choices(&category_names);
                 clear();
-                self.category = category_names[category_index - 1].to_string();
+                self.category = String::from(category_names[category_index - 1]);
             }
             _ => unreachable!(),
         }
@@ -165,12 +159,11 @@ impl Task {
 /// Returns errors when
 /// 1) File has invalid syntax
 /// 2) Screen can't be flushed
-pub fn edit_mode(file: OsString) -> Result<bool, String> {
+pub fn edit_mode(file: OsString) -> Result<(), String> {
     let mut screen = AlternateScreen::from(std::io::stdout());
     clear();
     let (mut tasks, mut categories) = read(&file)?;
     loop {
-
         match get_choices(&["Category", "Task"]) {
             1 => {
                 clear();
@@ -193,11 +186,10 @@ pub fn edit_mode(file: OsString) -> Result<bool, String> {
         if cont == "n" {
             break;
         }
-
     }
     save(&categories, &tasks, file);
     screen.flush().map_err(|err| err.to_string())?;
-    Ok(true)
+    Ok(())
 }
 
 /// # Panics
@@ -218,7 +210,7 @@ fn save(categories: &[Category], tasks: &[Task], file: OsString) {
                     "    Task name: {}\tdeadline: {}",
                     task.task,
                     task.deadline.map_or_else(
-                        || "none".to_string(),
+                        || String::from("none"),
                         |deadline| deadline.format(FMT).to_string()
                     )
                 )
@@ -270,7 +262,7 @@ pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool)
                     color_stream,
                     "    {}: {}",
                     task.deadline
-                        .map_or("No deadline".to_string(), |deadline| deadline
+                        .map_or(String::from("No deadline"), |deadline| deadline
                             .format(FMT)
                             .to_string()),
                     task.task
@@ -303,7 +295,7 @@ pub fn read(file: &OsString) -> Result<(Vec<Task>, Vec<Category>), String> {
 
     if !categories.iter().any(|c| c.name == "Unclassified") {
         categories.push(Category {
-            name: "Unclassified".to_string(),
+            name: String::from("Unclassified"),
             probability: 1.00,
             color: Color::White,
         });
@@ -356,7 +348,7 @@ fn edit_categories(categories: &mut Vec<Category>, tasks: &mut [Task]) {
             }
             if !category_names.iter().any(|v| v == &"Unclassified") {
                 categories.push(Category {
-                    name: "Unclassified".to_string(),
+                    name: String::from("Unclassified"),
                     probability: 1.00,
                     color: Color::White,
                 });
@@ -373,7 +365,7 @@ fn edit_tasks(tasks: &mut Vec<Task>, categories: &[Category]) {
             clear();
             let category_number = get_choices(&get_category_names(categories));
             clear();
-            let category = get_category_names(categories)[category_number - 1].to_string();
+            let category = String::from(get_category_names(categories)[category_number - 1]);
             let task = input::<String>().msg("Task name: ").get();
             let deadline = get_deadline("Deadline: ");
             tasks.push(Task {
@@ -472,7 +464,6 @@ pub fn ok_or_exit<T, E: Display>(result: Result<T, E>) -> T {
     ret
 }
 
-#[allow(dead_code)]
 fn clear() {
     assert!(std::process::Command::new("cls")
         .status()
