@@ -254,6 +254,7 @@ pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool)
         (None, Some(_d2)) => Ordering::Greater,
         (None, None) => Ordering::Equal,
     });
+
     let rand = {
         if probability {
             fastrand::f32()
@@ -261,12 +262,14 @@ pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool)
             0.00
         }
     };
+
     let mut color_stream = StandardStream::stdout(Auto);
 
     let mut has_task = HashSet::new();
     for task in &tasks {
         has_task.insert(&task.category);
     }
+
     for category in categories
         .iter()
         .filter(|category| category.probability >= rand && has_task.contains(&category.name))
@@ -275,8 +278,17 @@ pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool)
             .set_color(ColorSpec::new().set_fg(Some(category.color)))
             .ok();
         writeln!(color_stream, "{}", category.name).ok();
+
         for task in &tasks {
             if task.category == category.name {
+
+                let mut task_name_str = task.task.clone(); // we really need a clone
+                if let Some(deadline) = task.deadline {
+                    if chrono::Local::now().naive_local() > deadline {
+                        task_name_str.push_str(" [BACKLOG]");
+                    }
+                }
+
                 writeln!(
                     color_stream,
                     "    {}: {}",
@@ -284,7 +296,7 @@ pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool)
                         .map_or(String::from("No deadline"), |deadline| deadline
                             .format(FMT)
                             .to_string()),
-                    task.task
+                    task_name_str
                 )
                 .ok();
             }
