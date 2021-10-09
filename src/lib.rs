@@ -2,7 +2,6 @@
 
 use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::env::Args;
 use std::ffi::OsString;
 use std::fmt::Display;
 use std::fs::read_to_string;
@@ -11,7 +10,6 @@ use std::process::exit;
 use std::{io::prelude::*, str};
 
 use chrono::NaiveDateTime;
-use home::home_dir;
 use read_input::prelude::*;
 use regex::Regex;
 use termcolor::{Color, ColorChoice::Auto, ColorSpec, StandardStream, WriteColor};
@@ -22,7 +20,7 @@ const COLORS: [&str; 8] = [
 ];
 const FMT: &str = "%Y-%m-%d %H:%M";
 
-struct Category {
+pub struct Category {
     name: String,
     probability: f32,
     color: Color,
@@ -79,28 +77,28 @@ impl Category {
         let operation = get_choices(&["Change name", "Change probability", "Change color"]);
         match operation {
             1 => {
-                //clear();
+                clear();
                 self.name = input().msg("New name: ").get();
             }
             2 => {
-                //clear();
+                clear();
                 self.probability = input::<f32>()
                     .msg("New probability: ")
                     .add_err_test(|x| (&0.0..=&1.0).contains(&x), "Invalid probability")
                     .get();
             }
             3 => {
-                //clear();
+                clear();
                 println!("New color: ");
                 self.color = parse_color(COLORS[get_choices(&COLORS.to_vec()) - 1]).unwrap();
-                //clear();
+                clear();
             }
             _ => unreachable!(),
         }
     }
 }
 
-struct Task {
+pub struct Task {
     task: String,
     deadline: Option<NaiveDateTime>,
     category: String,
@@ -144,18 +142,18 @@ impl Task {
         let operation = get_choices(&["Change task name", "Change deadline", "Change category"]);
         match operation {
             1 => {
-                //clear();
+                clear();
                 self.task = input().msg("New task name: ").get();
             }
             2 => {
-                //clear();
+                clear();
                 self.deadline = get_deadline("New deadline: ");
             }
             3 => {
-                //clear();
+                clear();
                 let category_names = get_category_names(categories);
                 let category_index = get_choices(&category_names);
-                //clear();
+                clear();
                 self.category = category_names[category_index - 1].to_string();
             }
             _ => unreachable!(),
@@ -163,64 +161,47 @@ impl Task {
     }
 }
 
-fn edit(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
-    match get_choices(&["Category", "Task"]) {
-        1 => {
-            //clear();
-            edit_category(categories, tasks);
+/// # Errors
+/// Returns errors when
+/// 1) File has invalid syntax
+/// 2) Screen can't be flushed
+pub fn edit_mode(file: OsString) -> Result<bool, String> {
+    let mut screen = AlternateScreen::from(std::io::stdout());
+    clear();
+    let (mut tasks, mut categories) = read(&file)?;
+    loop {
+
+        match get_choices(&["Category", "Task"]) {
+            1 => {
+                clear();
+                edit_categories(&mut categories, &mut tasks);
+            }
+            2 => {
+                clear();
+                edit_tasks(&mut tasks, &categories);
+            }
+            _ => unreachable!(),
         }
-        2 => {
-            //clear();
-            edit_task(tasks, categories);
+
+        let cont = input::<String>()
+            .msg("Continue editing? [y/n] ")
+            .add_err_test(
+                |str| str.as_str() == "y" || str.as_str() == "n",
+                "Please enter y or n",
+            )
+            .get();
+        if cont == "n" {
+            break;
         }
-        _ => unreachable!(),
-    };
+
+    }
+    save(&categories, &tasks, file);
+    screen.flush().map_err(|err| err.to_string())?;
+    Ok(true)
 }
 
 /// # Panics
-/// Will panic if
-/// 1) `$TODO_FILE` is not set and `home::home_dir()` fails
-/// 2) Screen cannot be flushed
-pub fn run(args: &mut Args) {
-    args.next();
-    let file = std::env::var_os("TODO_FILE").map_or_else(
-        || home_dir().unwrap().join("todo.txt").into_os_string(),
-        |var| var,
-    );
-    if let Some(arg) = args.next() {
-        match arg.as_str() {
-            "-e" => {
-                let mut screen = AlternateScreen::from(std::io::stdout());
-                //clear();
-                let (mut tasks, mut categories) = handle_err(read(&file));
-                loop {
-                    edit(&mut categories, &mut tasks);
-                    let cont = input::<String>()
-                        .msg("Continue editing? [y/n] ")
-                        .add_err_test(
-                            |str| str.as_str() == "y" || str.as_str() == "n",
-                            "Please enter y or n",
-                        )
-                        .get();
-                    if cont == "n" {
-                        break;
-                    }
-                }
-                save(&categories, &tasks, file);
-                screen.flush().unwrap();
-            }
-            "-p" => {
-                let (tasks, categories) = handle_err(read(&file));
-                display(&categories, tasks, true);
-            }
-            _ => help(),
-        };
-    } else {
-        let (tasks, categories) = handle_err(read(&file));
-        display(&categories, tasks, false);
-    }
-}
-
+/// Panics when the file cannot be opened in write mode
 fn save(categories: &[Category], tasks: &[Task], file: OsString) {
     let mut out = File::create(file).unwrap();
     for category in categories {
@@ -247,7 +228,7 @@ fn save(categories: &[Category], tasks: &[Task], file: OsString) {
     }
 }
 
-fn help() {
+pub fn help() {
     let help = r"Usage:
     todo_cras <no arguments>: Display tasks
               -e:             Edit tasks and categories
@@ -255,7 +236,7 @@ fn help() {
     println!("{}", help);
 }
 
-fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
+pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
     tasks.sort_by(|t1, t2| match (t1.deadline, t2.deadline) {
         (Some(d1), Some(d2)) => d1.cmp(&d2),
         (Some(_d1), None) => Ordering::Less,
@@ -300,7 +281,10 @@ fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
     }
 }
 
-fn read(file: &OsString) -> Result<(Vec<Task>, Vec<Category>), String> {
+/// # Errors
+/// Returns an error when the file has invalid syntax
+#[allow(clippy::missing_panics_doc)]
+pub fn read(file: &OsString) -> Result<(Vec<Task>, Vec<Category>), String> {
     let mut categories = vec![];
     let mut tasks = vec![];
     let text = read_to_string(file).expect("Could not read file");
@@ -328,11 +312,11 @@ fn read(file: &OsString) -> Result<(Vec<Task>, Vec<Category>), String> {
     Ok((tasks, categories))
 }
 
-fn edit_category(categories: &mut Vec<Category>, tasks: &mut [Task]) {
+fn edit_categories(categories: &mut Vec<Category>, tasks: &mut [Task]) {
     let category_names = get_category_names(categories);
     match get_choices(&["Add category", "Edit category", "Delete category"]) {
         1 => {
-            //clear();
+            clear();
             let name = input::<String>().msg("Name: ").get();
             let probability = input::<f32>()
                 .msg("Probability: ")
@@ -340,7 +324,7 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut [Task]) {
                 .get();
             println!("Color: ");
             let color = parse_color(COLORS[get_choices(&COLORS.to_vec()) - 1]).unwrap();
-            //clear();
+            clear();
             categories.push(Category {
                 name,
                 probability,
@@ -348,13 +332,13 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut [Task]) {
             });
         }
         2 => {
-            //clear();
+            clear();
             let category = get_choices(&category_names);
-            //clear();
+            clear();
             categories[category - 1].edit();
         }
         3 => {
-            //clear();
+            clear();
             let category_index = get_choices(&category_names) - 1;
             if category_names[category_index] == "Unclassified" {
                 let mut red_stream = StandardStream::stdout(Auto);
@@ -364,7 +348,7 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut [Task]) {
                 writeln!(red_stream, "Cannot delete special category Unclassified").ok();
                 exit(1);
             }
-            //clear();
+            clear();
             for task in tasks.iter_mut() {
                 if task.category == category_names[category_index] {
                     task.category = String::from("Unclassified");
@@ -383,12 +367,12 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut [Task]) {
     };
 }
 
-fn edit_task(tasks: &mut Vec<Task>, categories: &[Category]) {
+fn edit_tasks(tasks: &mut Vec<Task>, categories: &[Category]) {
     match get_choices(&["Add task", "Edit task", "Delete task"]) {
         1 => {
-            //clear();
+            clear();
             let category_number = get_choices(&get_category_names(categories));
-            //clear();
+            clear();
             let category = get_category_names(categories)[category_number - 1].to_string();
             let task = input::<String>().msg("Task name: ").get();
             let deadline = get_deadline("Deadline: ");
@@ -399,17 +383,17 @@ fn edit_task(tasks: &mut Vec<Task>, categories: &[Category]) {
             });
         }
         2 => {
-            //clear();
+            clear();
             let task_names = get_task_names(tasks);
             let task_index = get_choices(&task_names) - 1;
-            //clear();
+            clear();
             tasks[task_index].edit(categories);
         }
         3 => {
-            //clear();
+            clear();
             let task_names = get_task_names(tasks);
             let task_index = get_choices(&task_names) - 1;
-            //clear();
+            clear();
             tasks.remove(task_index);
         }
         _ => unreachable!(),
@@ -470,7 +454,7 @@ fn get_deadline(msg: &str) -> Option<NaiveDateTime> {
     }
 }
 
-fn handle_err<T, E: Display>(result: Result<T, E>) -> T {
+pub fn ok_or_exit<T, E: Display>(result: Result<T, E>) -> T {
     let mut color_stream = StandardStream::stdout(Auto);
     color_stream
         .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
