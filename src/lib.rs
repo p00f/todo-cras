@@ -31,7 +31,7 @@ struct Category {
 impl Category {
     fn parse(line: &str) -> Result<Self, String> {
         let regex = Regex::new(
-        r"^Category name: (?P<name>[^\t]+)\tcolor: (?P<color>[^\t]+)\tprobability: (?P<probability>\d\.\d{2})$"
+        r"^Category name: (?P<name>[^\t]+)\tcolor: (?P<color>[^\t]+)\tprobability: (?P<probability>.+)$"
         )
         .unwrap();
 
@@ -50,7 +50,8 @@ impl Category {
                 .name("color")
                 .unwrap()
                 .as_str(),
-        )?;
+        )
+        .map_err(|err| format!("{} at\n{}", err, line))?;
 
         let probability = regex
             .captures(line)
@@ -59,7 +60,7 @@ impl Category {
             .unwrap()
             .as_str()
             .parse::<f32>()
-            .map_err(|err| err.to_string())?;
+            .map_err(|err| format!("Could not parse probability: {} at\n{}", err, line))?;
 
         assert!(
             (0.0..=1.0).contains(&probability),
@@ -107,10 +108,8 @@ struct Task {
 
 impl Task {
     fn parse(line: &str, category: &str) -> Result<Self, String> {
-        let regex = Regex::new(
-        r#"^    Task name: (?P<name>[^\t]+)\tdeadline: "(?P<deadline>(\d{4}-\d{2}-\d{2} \d{2}:\d{2})|none)"$"#
-        )
-        .unwrap();
+        let regex =
+            Regex::new(r"^    Task name: (?P<name>[^\t]+)\tdeadline: (?P<deadline>.+)$").unwrap();
 
         let captured_deadline = regex
             .captures(line)
@@ -124,7 +123,7 @@ impl Task {
             "none" => None,
             _ => Some(
                 NaiveDateTime::parse_from_str(captured_deadline, FMT)
-                    .map_err(|err| err.to_string())?,
+                    .map_err(|err| format!("Could not parse deadline: {} at\n{}", err, line))?,
             ),
         };
 
@@ -235,7 +234,7 @@ fn save(categories: &[Category], tasks: &[Task], file: OsString) {
             if task.category == category.name {
                 writeln!(
                     out,
-                    "    Task name: {}\tdeadline: {:?}",
+                    "    Task name: {}\tdeadline: {}",
                     task.task,
                     task.deadline.map_or_else(
                         || "none".to_string(),
@@ -307,11 +306,8 @@ fn read(file: &OsString) -> Result<(Vec<Task>, Vec<Category>), String> {
     let text = read_to_string(file).expect("Could not read file");
 
     let category_regex =
-        Regex::new(r"^Category name: [^\t]+\tcolor: [^\t]+\tprobability: \d\.\d{2}+$").unwrap();
-    let task_regex = Regex::new(
-        r#"^    Task name: [^\t]+\tdeadline: "(\d{4}-\d{2}-\d{2} \d{2}:\d{2})"|"none"$"#,
-    )
-    .unwrap();
+        Regex::new(r"^Category name: [^\t]+\tcolor: [^\t]+\tprobability: .+$").unwrap();
+    let task_regex = Regex::new(r"^    Task name: [^\t]+\tdeadline: .+$").unwrap();
 
     for line in text.lines() {
         if category_regex.is_match(line) {
@@ -361,11 +357,11 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut [Task]) {
             //clear();
             let category_index = get_choices(&category_names) - 1;
             if category_names[category_index] == "Unclassified" {
-                let mut color_stream = StandardStream::stdout(Auto);
-                color_stream
+                let mut red_stream = StandardStream::stdout(Auto);
+                red_stream
                     .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
                     .ok();
-                writeln!(color_stream, "Cannot delete special category Unclassified").ok();
+                writeln!(red_stream, "Cannot delete special category Unclassified").ok();
                 exit(1);
             }
             //clear();
@@ -439,7 +435,7 @@ fn parse_color(color: &str) -> Result<Color, String> {
         "magenta" => Ok(Color::Magenta),
         "yellow" => Ok(Color::Yellow),
         "white" => Ok(Color::White),
-        _ => Err("Invalid color".to_string()),
+        _ => Err(format!("Invalid color {}", color)),
     }
 }
 
@@ -475,17 +471,21 @@ fn get_deadline(msg: &str) -> Option<NaiveDateTime> {
 }
 
 fn handle_err<T, E: Display>(result: Result<T, E>) -> T {
-    let mut red_stream = StandardStream::stdout(Auto);
-    red_stream
+    let mut color_stream = StandardStream::stdout(Auto);
+    color_stream
         .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
         .ok();
-    match result {
+    let ret = match result {
         Ok(ok) => ok,
         Err(e) => {
-            writeln!(red_stream, "{}", e).ok();
+            writeln!(color_stream, "{}", e).ok();
             exit(1);
         }
-    }
+    };
+    color_stream
+        .set_color(ColorSpec::new().set_fg(Some(Color::White)))
+        .ok();
+    ret
 }
 
 #[allow(dead_code)]
