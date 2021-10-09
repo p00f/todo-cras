@@ -4,15 +4,17 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::env::Args;
 use std::ffi::OsString;
+use std::fmt::Display;
 use std::fs::read_to_string;
 use std::fs::File;
+use std::process::exit;
 use std::{io::prelude::*, str};
 
 use chrono::NaiveDateTime;
 use home::home_dir;
 use read_input::prelude::*;
 use regex::Regex;
-use termcolor::{Color, ColorSpec, WriteColor};
+use termcolor::{Color, ColorChoice::Auto, ColorSpec, StandardStream, WriteColor};
 use termion::screen::AlternateScreen;
 
 const COLORS: [&str; 8] = [
@@ -27,72 +29,70 @@ struct Category {
 }
 
 impl Category {
-    fn parse(lines: &[&str]) -> Self {
-        let regex = [
-            Regex::new(r"Category name: (.+)").unwrap(),
-            Regex::new(r"color: (.+)").unwrap(),
-            Regex::new(r"probability: (.+)").unwrap(),
-        ];
+    fn parse(line: &str) -> Result<Self, String> {
+        let regex = Regex::new(
+        r"^Category name: (?P<name>[^\t]+)\tcolor: (?P<color>[^\t]+)\tprobability: (?P<probability>\d\.\d{2})$"
+        )
+        .unwrap();
 
-        let name = regex[0]
-            .captures(lines[0])
+        let name = regex
+            .captures(line)
             .unwrap()
-            .get(1)
+            .name("name")
             .unwrap()
             .as_str()
             .to_owned();
 
-        let color;
-        let color_result = parse_color(
-            regex[1]
-                .captures(lines[1])
+        let color = parse_color(
+            regex
+                .captures(line)
                 .unwrap()
-                .get(1)
+                .name("color")
                 .unwrap()
                 .as_str(),
-        );
+        )?;
 
-        if let Ok(parsed_color) = color_result {
-            color = parsed_color;
-        } else {
-            println!("{} at {}", color_result.err().unwrap(), lines[1]);
-            std::process::exit(1);
-        }
-
-        let probability = regex[2]
-            .captures(lines[2])
+        let probability = regex
+            .captures(line)
             .unwrap()
-            .get(1)
+            .name("probability")
             .unwrap()
             .as_str()
             .parse::<f32>()
-            .unwrap();
-        Self {
+            .map_err(|err| err.to_string())?;
+
+        assert!(
+            (0.0..=1.0).contains(&probability),
+            "Probability {} outside 0..=1",
+            probability
+        );
+
+        Ok(Self {
             name,
             probability,
             color,
-        }
+        })
     }
 
     fn edit(&mut self) {
         let operation = get_choices(&["Change name", "Change probability", "Change color"]);
         match operation {
             1 => {
-                clear();
+                //clear();
                 self.name = input().msg("New name: ").get();
             }
             2 => {
-                clear();
+                //clear();
                 self.probability = input::<f32>()
                     .msg("New probability: ")
                     .add_err_test(|x| (&0.0..=&1.0).contains(&x), "Invalid probability")
                     .get();
             }
             3 => {
-                clear();
+                //clear();
                 println!("New color: ");
                 self.color = parse_color(COLORS[get_choices(&COLORS.to_vec()) - 1]).unwrap();
-                clear();
+                //clear();
             }
             _ => unreachable!(),
         }
@@ -106,63 +106,57 @@ struct Task {
 }
 
 impl Task {
-    fn parse(lines: &[&str], category: &str) -> Self {
-        let regex = [
-            Regex::new(r"^    Task name: (.+)$").unwrap(),
-            Regex::new(r#"^         deadline: "(.+)"$"#).unwrap(),
-        ];
+    fn parse(line: &str, category: &str) -> Result<Self, String> {
+        let regex = Regex::new(
+        r#"^    Task name: (?P<name>[^\t]+)\tdeadline: "(?P<deadline>(\d{4}-\d{2}-\d{2} \d{2}:\d{2})|none)"$"#
+        )
+        .unwrap();
 
-        let captured_deadline = regex[1]
-            .captures(lines[1])
+        let captured_deadline = regex
+            .captures(line)
             .unwrap()
-            .get(1)
+            .name("deadline")
             .unwrap()
             .as_str()
             .trim();
-        let mut deadline = None;
-        if captured_deadline != "none" {
-            deadline = Some(
-                NaiveDateTime::parse_from_str(
-                    regex[1]
-                        .captures(lines[1])
-                        .unwrap()
-                        .get(1)
-                        .unwrap()
-                        .as_str(),
-                    FMT,
-                )
-                .unwrap(),
-            );
-        }
-        Self {
-            task: regex[0]
-                .captures(lines[0])
+
+        let deadline = match captured_deadline {
+            "none" => None,
+            _ => Some(
+                NaiveDateTime::parse_from_str(captured_deadline, FMT)
+                    .map_err(|err| err.to_string())?,
+            ),
+        };
+
+        Ok(Self {
+            task: regex
+                .captures(line)
                 .unwrap()
-                .get(1)
+                .name("name")
                 .unwrap()
                 .as_str()
                 .to_string(),
             deadline,
-            category: category.to_owned(),
-        }
+            category: String::from(category),
+        })
     }
 
     fn edit(&mut self, categories: &[Category]) {
         let operation = get_choices(&["Change task name", "Change deadline", "Change category"]);
         match operation {
             1 => {
-                clear();
+                //clear();
                 self.task = input().msg("New task name: ").get();
             }
             2 => {
-                clear();
+                //clear();
                 self.deadline = get_deadline("New deadline: ");
             }
             3 => {
-                clear();
+                //clear();
                 let category_names = get_category_names(categories);
                 let category_index = get_choices(&category_names);
-                clear();
+                //clear();
                 self.category = category_names[category_index - 1].to_string();
             }
             _ => unreachable!(),
@@ -173,17 +167,21 @@ impl Task {
 fn edit(categories: &mut Vec<Category>, tasks: &mut Vec<Task>) {
     match get_choices(&["Category", "Task"]) {
         1 => {
-            clear();
+            //clear();
             edit_category(categories, tasks);
         }
         2 => {
-            clear();
+            //clear();
             edit_task(tasks, categories);
         }
         _ => unreachable!(),
     };
 }
 
+/// # Panics
+/// Will panic if
+/// 1) `$TODO_FILE` is not set and `home::home_dir()` fails
+/// 2) Screen cannot be flushed
 pub fn run(args: &mut Args) {
     args.next();
     let file = std::env::var_os("TODO_FILE").map_or_else(
@@ -194,8 +192,8 @@ pub fn run(args: &mut Args) {
         match arg.as_str() {
             "-e" => {
                 let mut screen = AlternateScreen::from(std::io::stdout());
-                clear();
-                let (mut tasks, mut categories) = read(&file);
+                //clear();
+                let (mut tasks, mut categories) = handle_err(read(&file));
                 loop {
                     edit(&mut categories, &mut tasks);
                     let cont = input::<String>()
@@ -213,13 +211,13 @@ pub fn run(args: &mut Args) {
                 screen.flush().unwrap();
             }
             "-p" => {
-                let (tasks, categories) = read(&file);
+                let (tasks, categories) = handle_err(read(&file));
                 display(&categories, tasks, true);
             }
             _ => help(),
         };
     } else {
-        let (tasks, categories) = read(&file);
+        let (tasks, categories) = handle_err(read(&file));
         display(&categories, tasks, false);
     }
 }
@@ -229,7 +227,7 @@ fn save(categories: &[Category], tasks: &[Task], file: OsString) {
     for category in categories {
         writeln!(
             out,
-            "Category name: {}\ncolor: {:?}\nprobability: {}",
+            "Category name: {}\tcolor: {:?}\tprobability: {:.2}",
             category.name, category.color, category.probability
         )
         .ok();
@@ -237,7 +235,7 @@ fn save(categories: &[Category], tasks: &[Task], file: OsString) {
             if task.category == category.name {
                 writeln!(
                     out,
-                    "    Task name: {}\n         deadline: {:?}",
+                    "    Task name: {}\tdeadline: {:?}",
                     task.task,
                     task.deadline.map_or_else(
                         || "none".to_string(),
@@ -260,7 +258,7 @@ fn help() {
 
 fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
     tasks.sort_by(|t1, t2| match (t1.deadline, t2.deadline) {
-        (Some(d1), Some(d2)) => d1.cmp(&d2).reverse(),
+        (Some(d1), Some(d2)) => d1.cmp(&d2),
         (Some(_d1), None) => Ordering::Less,
         (None, Some(_d2)) => Ordering::Greater,
         (None, None) => Ordering::Equal,
@@ -272,15 +270,14 @@ fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
             0.00
         }
     };
-    let mut color_stream = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
+    let mut color_stream = StandardStream::stdout(Auto);
 
-    let mut has_task = HashSet::new(); // only
+    let mut has_task = HashSet::new();
     for task in &tasks {
-        // display
-        has_task.insert(&task.category); // non-empty
-    } // categories
-    for category in categories                                                                // whose probability
-        .iter()                                                                               // is greater than `rand`
+        has_task.insert(&task.category);
+    }
+    for category in categories
+        .iter()
         .filter(|category| category.probability >= rand && has_task.contains(&category.name))
     {
         color_stream
@@ -289,7 +286,6 @@ fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
         writeln!(color_stream, "{}", category.name).ok();
         for task in &tasks {
             if task.category == category.name {
-                // O(tasks * categories) is fine lol
                 writeln!(
                     color_stream,
                     "    {}: {}",
@@ -305,35 +301,26 @@ fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
     }
 }
 
-fn read(file: &OsString) -> (Vec<Task>, Vec<Category>) {
+fn read(file: &OsString) -> Result<(Vec<Task>, Vec<Category>), String> {
     let mut categories = vec![];
     let mut tasks = vec![];
-    let lines = read_to_string(file).expect("Could not read file");
-    let lines: Vec<&str> = lines.lines().collect();
+    let text = read_to_string(file).expect("Could not read file");
 
-    let category_regex = [
-        Regex::new(r"^Category name: .+$").unwrap(),
-        Regex::new(r"^color: .+$").unwrap(),
-        Regex::new(r"^probability: .+$").unwrap(),
-    ];
-    let task_regex = [
-        Regex::new(r"^    Task name: .+$").unwrap(),
-        Regex::new(r#"^         deadline: "(\d{4}-\d{2}-\d{2} \d{2}:\d{2})"|"none"$"#).unwrap(),
-    ];
+    let category_regex =
+        Regex::new(r"^Category name: [^\t]+\tcolor: [^\t]+\tprobability: \d\.\d{2}+$").unwrap();
+    let task_regex = Regex::new(
+        r#"^    Task name: [^\t]+\tdeadline: "(\d{4}-\d{2}-\d{2} \d{2}:\d{2})"|"none"$"#,
+    )
+    .unwrap();
 
-    for line_num in 0..lines.len() {
-        if category_regex[0].is_match(lines[line_num])
-            && category_regex[1].is_match(lines[line_num + 1])
-            && category_regex[2].is_match(lines[line_num + 2])
-        {
-            categories.push(Category::parse(&lines[line_num..(line_num + 3)]));
-        } else if task_regex[0].is_match(lines[line_num])
-            && task_regex[1].is_match(lines[line_num + 1])
-        {
-            let category = categories[categories.len() - 1].name.clone();
-            tasks.push(Task::parse(&lines[line_num..(line_num + 2)], &category));
+    for line in text.lines() {
+        if category_regex.is_match(line) {
+            categories.push(Category::parse(line)?);
+        } else if task_regex.is_match(line) {
+            tasks.push(Task::parse(line, &categories.last().unwrap().name)?);
         }
     }
+
     if !categories.iter().any(|c| c.name == "Unclassified") {
         categories.push(Category {
             name: "Unclassified".to_string(),
@@ -341,14 +328,15 @@ fn read(file: &OsString) -> (Vec<Task>, Vec<Category>) {
             color: Color::White,
         });
     }
-    (tasks, categories)
+
+    Ok((tasks, categories))
 }
 
 fn edit_category(categories: &mut Vec<Category>, tasks: &mut [Task]) {
     let category_names = get_category_names(categories);
     match get_choices(&["Add category", "Edit category", "Delete category"]) {
         1 => {
-            clear();
+            //clear();
             let name = input::<String>().msg("Name: ").get();
             let probability = input::<f32>()
                 .msg("Probability: ")
@@ -356,7 +344,7 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut [Task]) {
                 .get();
             println!("Color: ");
             let color = parse_color(COLORS[get_choices(&COLORS.to_vec()) - 1]).unwrap();
-            clear();
+            //clear();
             categories.push(Category {
                 name,
                 probability,
@@ -364,24 +352,23 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut [Task]) {
             });
         }
         2 => {
-            clear();
+            //clear();
             let category = get_choices(&category_names);
-            clear();
+            //clear();
             categories[category - 1].edit();
         }
         3 => {
-            clear();
+            //clear();
             let category_index = get_choices(&category_names) - 1;
             if category_names[category_index] == "Unclassified" {
-                let mut color_stream =
-                    termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
+                let mut color_stream = StandardStream::stdout(Auto);
                 color_stream
                     .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
                     .ok();
                 writeln!(color_stream, "Cannot delete special category Unclassified").ok();
-                std::process::exit(1);
+                exit(1);
             }
-            clear();
+            //clear();
             for task in tasks.iter_mut() {
                 if task.category == category_names[category_index] {
                     task.category = String::from("Unclassified");
@@ -403,9 +390,9 @@ fn edit_category(categories: &mut Vec<Category>, tasks: &mut [Task]) {
 fn edit_task(tasks: &mut Vec<Task>, categories: &[Category]) {
     match get_choices(&["Add task", "Edit task", "Delete task"]) {
         1 => {
-            clear();
+            //clear();
             let category_number = get_choices(&get_category_names(categories));
-            clear();
+            //clear();
             let category = get_category_names(categories)[category_number - 1].to_string();
             let task = input::<String>().msg("Task name: ").get();
             let deadline = get_deadline("Deadline: ");
@@ -416,17 +403,17 @@ fn edit_task(tasks: &mut Vec<Task>, categories: &[Category]) {
             });
         }
         2 => {
-            clear();
+            //clear();
             let task_names = get_task_names(tasks);
             let task_index = get_choices(&task_names) - 1;
-            clear();
+            //clear();
             tasks[task_index].edit(categories);
         }
         3 => {
-            clear();
+            //clear();
             let task_names = get_task_names(tasks);
             let task_index = get_choices(&task_names) - 1;
-            clear();
+            //clear();
             tasks.remove(task_index);
         }
         _ => unreachable!(),
@@ -487,6 +474,21 @@ fn get_deadline(msg: &str) -> Option<NaiveDateTime> {
     }
 }
 
+fn handle_err<T, E: Display>(result: Result<T, E>) -> T {
+    let mut red_stream = StandardStream::stdout(Auto);
+    red_stream
+        .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
+        .ok();
+    match result {
+        Ok(ok) => ok,
+        Err(e) => {
+            writeln!(red_stream, "{}", e).ok();
+            exit(1);
+        }
+    }
+}
+
+#[allow(dead_code)]
 fn clear() {
     assert!(std::process::Command::new("cls")
         .status()
