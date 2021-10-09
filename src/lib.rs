@@ -397,6 +397,7 @@ fn get_choices(choices: &[&str]) -> usize {
         println!("{}: {}", iteration + 1, choice);
     }
     input::<usize>()
+        .msg(format!("Your choice [{}-{}]: ", 1, choices.len()))
         .inside_err(1..=choices.len(), "Invalid choice")
         .get()
 }
