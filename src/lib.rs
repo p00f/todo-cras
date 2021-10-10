@@ -241,7 +241,8 @@ fn save(categories: &[Category], tasks: &[Task], file: OsString) {
 
 pub fn help() {
     let help = r"Usage:
-    todo_cras <no arguments>: Display tasks
+    todo_cras <no arguments>: Display all tasks
+              -p:             Display tasks according to probability
               -e:             Edit tasks and categories
               -h:             Display this help";
     println!("{}", help);
