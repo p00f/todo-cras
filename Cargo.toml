@@ -5,7 +5,6 @@ authors = ["Chinmay Dalal <dalal.chinmay.0101@gmail.com"]
 description = "Simple cli todo manager, useful as a shell greeting"
 repository = "https://sr.ht/~p00f/todo-cras"
 license = "GPL-3.0-or-later"
-license-file = "LICENSE"
 keywords = ["todo", "cli"]
 categories = ["command-line-utilities"]
 edition = "2018"
