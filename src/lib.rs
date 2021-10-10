@@ -177,7 +177,7 @@ impl Task {
 /// # Errors
 /// Returns errors when
 /// 1) File has invalid syntax
-/// 2) Screen can't be flushed
+/// 2) Alternate buffer can't be flushed
 pub fn edit_mode(file: OsString) -> Result<(), String> {
     let mut screen = AlternateScreen::from(std::io::stdout());
     clear();
@@ -281,8 +281,7 @@ pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool)
 
         for task in &tasks {
             if task.category == category.name {
-
-                let mut task_name_str = task.task.clone(); // we really need a clone
+                let mut task_name_str = task.task.clone();
                 if let Some(deadline) = task.deadline {
                     if chrono::Local::now().naive_local() > deadline {
                         task_name_str.push_str(" [BACKLOG]");
@@ -354,16 +353,20 @@ fn edit_categories(categories: &mut Vec<Category>, tasks: &mut [Task]) {
                 color,
             });
         }
+
         2 => {
             clear();
             let category = get_choices(&category_names);
             clear();
             categories[category - 1].edit();
         }
+
         3 => {
             clear();
             let category_index = get_choices(&category_names) - 1;
-            if category_names[category_index] == "Unclassified" {
+            let category_name = category_names[category_index];
+
+            if category_name == "Unclassified" {
                 let mut red_stream = StandardStream::stdout(Auto);
                 red_stream
                     .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
@@ -371,12 +374,14 @@ fn edit_categories(categories: &mut Vec<Category>, tasks: &mut [Task]) {
                 writeln!(red_stream, "Cannot delete special category Unclassified").ok();
                 exit(1);
             }
+
             clear();
             for task in tasks.iter_mut() {
-                if task.category == category_names[category_index] {
+                if task.category == category_name {
                     task.category = String::from("Unclassified");
                 }
             }
+
             if !category_names.iter().any(|v| v == &"Unclassified") {
                 categories.push(Category {
                     name: String::from("Unclassified"),
@@ -405,6 +410,7 @@ fn edit_tasks(tasks: &mut Vec<Task>, categories: &[Category]) {
                 category,
             });
         }
+
         2 => {
             clear();
             let task_names = get_task_names(tasks);
@@ -412,6 +418,7 @@ fn edit_tasks(tasks: &mut Vec<Task>, categories: &[Category]) {
             clear();
             tasks[task_index].edit(categories);
         }
+
         3 => {
             clear();
             let task_names = get_task_names(tasks);
@@ -419,6 +426,7 @@ fn edit_tasks(tasks: &mut Vec<Task>, categories: &[Category]) {
             clear();
             tasks.remove(task_index);
         }
+
         _ => unreachable!(),
     };
 }
@@ -471,6 +479,7 @@ fn get_deadline(msg: &str) -> Option<NaiveDateTime> {
             "Invalid deadline",
         )
         .get();
+
     if input.as_str().trim() == "" {
         None
     } else {
@@ -483,6 +492,7 @@ pub fn ok_or_exit<T, E: Display>(result: Result<T, E>) -> T {
     color_stream
         .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
         .ok();
+
     let ret = match result {
         Ok(ok) => ok,
         Err(e) => {
@@ -490,9 +500,11 @@ pub fn ok_or_exit<T, E: Display>(result: Result<T, E>) -> T {
             exit(1);
         }
     };
+
     color_stream
         .set_color(ColorSpec::new().set_fg(Some(Color::White)))
         .ok();
+
     ret
 }
 
