@@ -321,6 +321,12 @@ pub fn read(file: &OsString) -> Result<(Vec<Task>, Vec<Category>), String> {
             categories.push(Category::parse(line)?);
         } else if task_regex.is_match(line) {
             tasks.push(Task::parse(line, &categories.last().unwrap().name)?);
+        } else {
+            let mut color_stream = StandardStream::stdout(Auto);
+            color_stream
+                .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
+                .ok();
+            writeln!(color_stream, "Invalid format at {}", line).ok();
         }
     }
 
