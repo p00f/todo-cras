@@ -174,79 +174,46 @@ impl Task {
     }
 }
 
+
+
+
 /// # Errors
-/// Returns errors when
-/// 1) File has invalid syntax
-/// 2) Alternate buffer can't be flushed
-pub fn edit_mode(file: OsString) -> Result<(), String> {
-    let mut screen = AlternateScreen::from(std::io::stdout());
-    clear();
-    let (mut tasks, mut categories) = read(&file)?;
-    loop {
-        match get_choices(&["Category", "Task"]) {
-            1 => {
-                clear();
-                edit_categories(&mut categories, &mut tasks);
-            }
-            2 => {
-                clear();
-                edit_tasks(&mut tasks, &categories);
-            }
-            _ => unreachable!(),
-        }
+/// Returns an error when the file has invalid syntax
+#[allow(clippy::missing_panics_doc)]
+pub fn read(file: &OsString) -> Result<(Vec<Task>, Vec<Category>), String> {
+    let mut categories = vec![];
+    let mut tasks = vec![];
+    let text = read_to_string(file).expect("Could not read file");
 
-        let cont = input::<String>()
-            .msg("Continue editing? [y/n] ")
-            .add_err_test(
-                |str| str.as_str() == "y" || str.as_str() == "n",
-                "Please enter y or n",
-            )
-            .get();
-        if cont == "n" {
-            break;
-        }
-    }
-    save(&categories, &tasks, file);
-    screen.flush().map_err(|err| err.to_string())?;
-    Ok(())
-}
+    let category_regex =
+        Regex::new(r"^Category name: [^\t]+\tcolor: [^\t]+\tprobability: .+$").unwrap();
+    let task_regex = Regex::new(r"^    Task name: [^\t]+\tdeadline: .+$").unwrap();
 
-/// # Panics
-/// Panics when the file cannot be opened in write mode
-fn save(categories: &[Category], tasks: &[Task], file: OsString) {
-    let mut out = File::create(file).unwrap();
-    for category in categories {
-        writeln!(
-            out,
-            "Category name: {}\tcolor: {:?}\tprobability: {:.2}",
-            category.name, category.color, category.probability
-        )
-        .ok();
-        for task in tasks {
-            if task.category == category.name {
-                writeln!(
-                    out,
-                    "    Task name: {}\tdeadline: {}",
-                    task.task,
-                    task.deadline.map_or_else(
-                        || String::from("none"),
-                        |deadline| deadline.format(FMT).to_string()
-                    )
-                )
+    for line in text.lines() {
+        if category_regex.is_match(line) {
+            categories.push(Category::parse(line)?);
+        } else if task_regex.is_match(line) {
+            tasks.push(Task::parse(line, &categories.last().unwrap().name)?);
+        } else {
+            let mut color_stream = StandardStream::stdout(Auto);
+            color_stream
+                .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
                 .ok();
-            }
+            writeln!(color_stream, "Invalid format at {}", line).ok();
         }
     }
+
+    if !categories.iter().any(|c| c.name == "Unclassified") {
+        categories.push(Category {
+            name: String::from("Unclassified"),
+            probability: 1.00,
+            color: Color::White,
+        });
+    }
+
+    Ok((tasks, categories))
 }
 
-pub fn help() {
-    let help = r"Usage:
-    todo_cras <no arguments>: Display all tasks
-              -p:             Display tasks according to probability
-              -e:             Edit tasks and categories
-              -h:             Display this help";
-    println!("{}", help);
-}
 
 pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
     tasks.sort_by(|t1, t2| match (t1.deadline, t2.deadline) {
@@ -304,42 +271,44 @@ pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool)
     }
 }
 
+
 /// # Errors
-/// Returns an error when the file has invalid syntax
-#[allow(clippy::missing_panics_doc)]
-pub fn read(file: &OsString) -> Result<(Vec<Task>, Vec<Category>), String> {
-    let mut categories = vec![];
-    let mut tasks = vec![];
-    let text = read_to_string(file).expect("Could not read file");
+/// Returns errors when
+/// 1) File has invalid syntax
+/// 2) Alternate buffer can't be flushed
+pub fn edit_mode(file: OsString) -> Result<(), String> {
+    let mut screen = AlternateScreen::from(std::io::stdout());
+    clear();
+    let (mut tasks, mut categories) = read(&file)?;
+    loop {
+        match get_choices(&["Category", "Task"]) {
+            1 => {
+                clear();
+                edit_categories(&mut categories, &mut tasks);
+            }
+            2 => {
+                clear();
+                edit_tasks(&mut tasks, &categories);
+            }
+            _ => unreachable!(),
+        }
 
-    let category_regex =
-        Regex::new(r"^Category name: [^\t]+\tcolor: [^\t]+\tprobability: .+$").unwrap();
-    let task_regex = Regex::new(r"^    Task name: [^\t]+\tdeadline: .+$").unwrap();
-
-    for line in text.lines() {
-        if category_regex.is_match(line) {
-            categories.push(Category::parse(line)?);
-        } else if task_regex.is_match(line) {
-            tasks.push(Task::parse(line, &categories.last().unwrap().name)?);
-        } else {
-            let mut color_stream = StandardStream::stdout(Auto);
-            color_stream
-                .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
-                .ok();
-            writeln!(color_stream, "Invalid format at {}", line).ok();
+        let cont = input::<String>()
+            .msg("Continue editing? [y/n] ")
+            .add_err_test(
+                |str| str.as_str() == "y" || str.as_str() == "n",
+                "Please enter y or n",
+            )
+            .get();
+        if cont == "n" {
+            break;
         }
     }
-
-    if !categories.iter().any(|c| c.name == "Unclassified") {
-        categories.push(Category {
-            name: String::from("Unclassified"),
-            probability: 1.00,
-            color: Color::White,
-        });
-    }
-
-    Ok((tasks, categories))
+    save(&categories, &tasks, file);
+    screen.flush().map_err(|err| err.to_string())?;
+    Ok(())
 }
+
 
 fn edit_categories(categories: &mut Vec<Category>, tasks: &mut [Task]) {
     let category_names = get_category_names(categories);
@@ -437,6 +406,49 @@ fn edit_tasks(tasks: &mut Vec<Task>, categories: &[Category]) {
         _ => unreachable!(),
     };
 }
+
+
+/// # Panics
+/// Panics when the file cannot be opened in write mode
+fn save(categories: &[Category], tasks: &[Task], file: OsString) {
+    let mut out = File::create(file).unwrap();
+    for category in categories {
+        writeln!(
+            out,
+            "Category name: {}\tcolor: {:?}\tprobability: {:.2}",
+            category.name, category.color, category.probability
+        )
+        .ok();
+        for task in tasks {
+            if task.category == category.name {
+                writeln!(
+                    out,
+                    "    Task name: {}\tdeadline: {}",
+                    task.task,
+                    task.deadline.map_or_else(
+                        || String::from("none"),
+                        |deadline| deadline.format(FMT).to_string()
+                    )
+                )
+                .ok();
+            }
+        }
+    }
+}
+
+pub fn help() {
+    let help = r"Usage:
+    todo_cras <no arguments>: Display all tasks
+              -p:             Display tasks according to probability
+              -e:             Edit tasks and categories
+              -h:             Display this help";
+    println!("{}", help);
+}
+
+
+
+
+// Helpers
 
 fn get_choices(choices: &[&str]) -> usize {
     for (iteration, choice) in choices.iter().enumerate() {
