@@ -549,5 +549,7 @@ fn color_print(color: Color, text: &str) {
         .set_color(ColorSpec::new().set_fg(Some(color)))
         .ok();
     writeln!(color_stream, "{}", text).ok();
-    std::mem::drop(color_stream);
+    color_stream
+        .set_color(ColorSpec::new().set_fg(Some(Color::White)))
+        .ok();
 }
