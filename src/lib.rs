@@ -87,6 +87,8 @@ impl Category {
     }
 
     fn edit(&mut self) {
+        color_print(Color::Yellow, &format!("Editing category '{}'", &self.name));
+
         let operation = get_choices(&["Change name", "Change probability", "Change color"]);
         match operation {
             1 => {
@@ -152,6 +154,7 @@ impl Task {
     }
 
     fn edit(&mut self, categories: &[Category]) {
+        color_print(Color::Yellow, &format!("Editing task '{}'", &self.task));
         let operation = get_choices(&["Change task name", "Change deadline", "Change category"]);
         match operation {
             1 => {
@@ -309,6 +312,7 @@ fn edit_categories(categories: &mut Vec<Category>, tasks: &mut [Task]) {
     match get_choices(&["Add category", "Edit category", "Delete category"]) {
         1 => {
             clear();
+            color_print(Color::Green, "Adding category");
             let name = input::<String>().msg("Name: ").get();
             let probability = input::<f32>()
                 .msg("Probability: ")
@@ -346,6 +350,8 @@ fn edit_categories(categories: &mut Vec<Category>, tasks: &mut [Task]) {
             }
 
             clear();
+            color_print(Color::Red, &format!("Removing category '{}'. All tasks in this category will be moved to 'Unclassified'", category_name));
+
             for task in tasks.iter_mut() {
                 if task.category == category_name {
                     task.category = String::from("Unclassified");
@@ -372,6 +378,10 @@ fn edit_tasks(tasks: &mut Vec<Task>, categories: &[Category]) {
             let category_number = get_choices(&get_category_names(categories));
             clear();
             let category = String::from(get_category_names(categories)[category_number - 1]);
+            color_print(
+                Color::Green,
+                &format!("Adding task to category '{}'", category),
+            );
             let task = input::<String>().msg("Task name: ").get();
             let deadline = get_deadline("Deadline: ");
             tasks.push(Task {
@@ -391,6 +401,7 @@ fn edit_tasks(tasks: &mut Vec<Task>, categories: &[Category]) {
 
         3 => {
             clear();
+            color_print(Color::Red, &format!("Deleting the task you choose"));
             let task_names = get_task_names(tasks);
             let task_index = get_choices(&task_names) - 1;
             clear();
@@ -530,4 +541,13 @@ impl<T, E: Display> HandleErr for Result<T, E> {
             .ok();
         ret
     }
+}
+
+fn color_print(color: Color, text: &str) {
+    let mut color_stream = StandardStream::stdout(Auto);
+    color_stream
+        .set_color(ColorSpec::new().set_fg(Some(color)))
+        .ok();
+    writeln!(color_stream, "{}", text).ok();
+    std::mem::drop(color_stream);
 }
