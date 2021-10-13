@@ -174,9 +174,6 @@ impl Task {
     }
 }
 
-
-
-
 /// # Errors
 /// Returns an error when the file has invalid syntax
 #[allow(clippy::missing_panics_doc)]
@@ -213,7 +210,6 @@ pub fn read(file: &OsString) -> Result<(Vec<Task>, Vec<Category>), String> {
 
     Ok((tasks, categories))
 }
-
 
 pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool) {
     tasks.sort_by(|t1, t2| match (t1.deadline, t2.deadline) {
@@ -271,7 +267,6 @@ pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool)
     }
 }
 
-
 /// # Errors
 /// Returns errors when
 /// 1) File has invalid syntax
@@ -308,7 +303,6 @@ pub fn edit_mode(file: OsString) -> Result<(), String> {
     screen.flush().map_err(|err| err.to_string())?;
     Ok(())
 }
-
 
 fn edit_categories(categories: &mut Vec<Category>, tasks: &mut [Task]) {
     let category_names = get_category_names(categories);
@@ -407,7 +401,6 @@ fn edit_tasks(tasks: &mut Vec<Task>, categories: &[Category]) {
     };
 }
 
-
 /// # Panics
 /// Panics when the file cannot be opened in write mode
 fn save(categories: &[Category], tasks: &[Task], file: OsString) {
@@ -444,9 +437,6 @@ pub fn help() {
               -h:             Display this help";
     println!("{}", help);
 }
-
-
-
 
 // Helpers
 
@@ -506,31 +496,38 @@ fn get_deadline(msg: &str) -> Option<NaiveDateTime> {
     }
 }
 
-pub fn ok_or_exit<T, E: Display>(result: Result<T, E>) -> T {
-    let mut color_stream = StandardStream::stdout(Auto);
-    color_stream
-        .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
-        .ok();
-
-    let ret = match result {
-        Ok(ok) => ok,
-        Err(e) => {
-            writeln!(color_stream, "{}", e).ok();
-            exit(1);
-        }
-    };
-
-    color_stream
-        .set_color(ColorSpec::new().set_fg(Some(Color::White)))
-        .ok();
-
-    ret
-}
-
 fn clear() {
     assert!(std::process::Command::new("cls")
         .status()
         .or_else(|_| std::process::Command::new("clear").status())
         .unwrap()
         .success());
+}
+
+pub trait HandleErr {
+    type Inner;
+    fn ok_or_exit(self) -> Self::Inner;
+}
+
+impl<T, E: Display> HandleErr for Result<T, E> {
+    type Inner = T;
+    fn ok_or_exit(self) -> T {
+        let mut color_stream = StandardStream::stdout(Auto);
+        color_stream
+            .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
+            .ok();
+
+        let ret = match self {
+            Ok(ok) => ok,
+            Err(e) => {
+                writeln!(color_stream, "{}", e).ok();
+                exit(1);
+            }
+        };
+
+        color_stream
+            .set_color(ColorSpec::new().set_fg(Some(Color::White)))
+            .ok();
+        ret
+    }
 }

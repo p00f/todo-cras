@@ -17,7 +17,7 @@
   along with todo-cras.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use todo_cras::{display, edit_mode, help, ok_or_exit, read};
+use todo_cras::{HandleErr, display, edit_mode, help, read};
 
 use home::home_dir;
 
@@ -34,12 +34,12 @@ fn main() {
         match arg.as_str() {
             // Edit mode.
             "-e" => {
-                ok_or_exit(edit_mode(file));
+                edit_mode(file).ok_or_exit();
             }
 
             // Display mode, with probability. Useful as shell greeting.
             "-p" => {
-                let (tasks, categories) = ok_or_exit(read(&file));
+                let (tasks, categories) = read(&file).ok_or_exit();
                 display(&categories, tasks, true);
             }
 
@@ -49,7 +49,7 @@ fn main() {
     } else {
         // Display mode, without probability. Useful as command.
 
-        let (tasks, categories) = ok_or_exit(read(&file));
+        let (tasks, categories) = read(&file).ok_or_exit();
         display(&categories, tasks, false);
     }
 }
