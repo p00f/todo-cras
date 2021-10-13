@@ -21,10 +21,10 @@
 
 use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::ffi::OsString;
 use std::fmt::Display;
 use std::fs::read_to_string;
 use std::fs::File;
+use std::path::Path;
 use std::process::exit;
 use std::{io::prelude::*, str};
 
@@ -180,7 +180,7 @@ impl Task {
 /// # Errors
 /// Returns an error when the file has invalid syntax
 #[allow(clippy::missing_panics_doc)]
-pub fn read(file: &OsString) -> Result<(Vec<Task>, Vec<Category>), String> {
+pub fn read(file: &Path) -> Result<(Vec<Task>, Vec<Category>), String> {
     let mut categories = vec![];
     let mut tasks = vec![];
     let text = read_to_string(file).expect("Could not read file");
@@ -274,10 +274,10 @@ pub fn display(categories: &[Category], mut tasks: Vec<Task>, probability: bool)
 /// Returns errors when
 /// 1) File has invalid syntax
 /// 2) Alternate buffer can't be flushed
-pub fn edit_mode(file: OsString) -> Result<(), String> {
+pub fn edit_mode(file: &Path) -> Result<(), String> {
     let mut screen = AlternateScreen::from(std::io::stdout());
     clear();
-    let (mut tasks, mut categories) = read(&file)?;
+    let (mut tasks, mut categories) = read(file)?;
     loop {
         match get_choices(&["Category", "Task"]) {
             1 => {
@@ -401,7 +401,7 @@ fn edit_tasks(tasks: &mut Vec<Task>, categories: &[Category]) {
 
         3 => {
             clear();
-            color_print(Color::Red, &format!("Deleting the task you choose"));
+            color_print(Color::Red, "Deleting the task you choose");
             let task_names = get_task_names(tasks);
             let task_index = get_choices(&task_names) - 1;
             clear();
@@ -414,7 +414,7 @@ fn edit_tasks(tasks: &mut Vec<Task>, categories: &[Category]) {
 
 /// # Panics
 /// Panics when the file cannot be opened in write mode
-fn save(categories: &[Category], tasks: &[Task], file: OsString) {
+fn save(categories: &[Category], tasks: &[Task], file: &Path) {
     let mut out = File::create(file).unwrap();
     for category in categories {
         writeln!(

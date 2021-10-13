@@ -17,6 +17,7 @@
   along with todo-cras.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+use std::path::PathBuf;
 use todo_cras::{HandleErr, display, edit_mode, help, read};
 
 use home::home_dir;
@@ -26,15 +27,15 @@ fn main() {
     args.next();
 
     let file = std::env::var_os("TODO_FILE").map_or_else(
-        || home_dir().unwrap().join("todo.txt").into_os_string(),
-        |var| var,
+        || home_dir().unwrap().join("todo.txt"),
+        PathBuf::from,
     );
 
     if let Some(arg) = args.next() {
         match arg.as_str() {
             // Edit mode.
             "-e" => {
-                edit_mode(file).ok_or_exit();
+                edit_mode(&file).ok_or_exit();
             }
 
             // Display mode, with probability. Useful as shell greeting.
