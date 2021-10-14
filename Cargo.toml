@@ -1,6 +1,6 @@
 [package]
 name = "todo-cras"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Chinmay Dalal <dalal.chinmay.0101@gmail.com"]
 description = "Simple cli todo manager, useful as a shell greeting"
 homepage = "https://sr.ht/~p00f/todo-cras"
