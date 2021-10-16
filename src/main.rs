@@ -18,7 +18,7 @@
 */
 
 use std::path::PathBuf;
-use todo_cras::{HandleErr, display, edit_mode, help, read};
+use todo_cras::{display, edit_mode, help, read, HandleErr};
 
 use home::home_dir;
 
@@ -26,10 +26,8 @@ fn main() {
     let mut args = std::env::args();
     args.next();
 
-    let file = std::env::var_os("TODO_FILE").map_or_else(
-        || home_dir().unwrap().join("todo.txt"),
-        PathBuf::from,
-    );
+    let file = std::env::var_os("TODO_FILE")
+        .map_or_else(|| home_dir().unwrap().join("todo.txt"), PathBuf::from);
 
     if let Some(arg) = args.next() {
         match arg.as_str() {
