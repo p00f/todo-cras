@@ -521,23 +521,10 @@ pub trait HandleErr {
 impl<T, E: Display> HandleErr for Result<T, E> {
     type Inner = T;
     fn ok_or_exit(self) -> T {
-        let mut color_stream = StandardStream::stdout(Auto);
-        color_stream
-            .set_color(ColorSpec::new().set_fg(Some(Color::Red)))
-            .ok();
-
-        let ret = match self {
-            Ok(ok) => ok,
-            Err(e) => {
-                writeln!(color_stream, "{}", e).ok();
-                exit(1);
-            }
-        };
-
-        color_stream
-            .set_color(ColorSpec::new().set_fg(Some(Color::White)))
-            .ok();
-        ret
+        self.unwrap_or_else(|err| {
+            color_print(Color::Red, &err.to_string());
+            exit(1);
+        })
     }
 }
 
