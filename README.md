@@ -14,6 +14,12 @@ Tasks whose deadline has passed will have `[BACKLOG]` appended to them.
 
 If `$TODO_FILE` is set then that file is used, otherwise `$HOME/todo.txt` is used.
 
+Installation:
+ - Release
+ `cargo install todo-cras`
+ - Current
+ `cargo install --git https://git.sr.ht/~p00f/todo-cras` or clone this repo and `cargo build --release`
+
 Usage:
 ```
 todo-cras <no-arguments>: Display all tasks

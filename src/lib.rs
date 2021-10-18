@@ -73,11 +73,9 @@ impl Category {
             .parse::<f32>()
             .map_err(|err| format!("Could not parse probability: {} at\n{}", err, line))?;
 
-        assert!(
-            (0.0..=1.0).contains(&probability),
-            "Probability {} outside 0..=1",
-            probability
-        );
+        if !(0.0..=1.0).contains(&probability) {
+            return Err(format!("Probability {} outside 0..=1", probability));
+        }
 
         Ok(Self {
             name: String::from(name),
