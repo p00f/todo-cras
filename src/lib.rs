@@ -528,7 +528,7 @@ impl<T, E: Display> HandleErr for Result<T, E> {
     }
 }
 
-fn color_print(color: Color, text: &str) {
+pub fn color_print(color: Color, text: &str) {
     let mut color_stream = StandardStream::stdout(Auto);
     color_stream
         .set_color(ColorSpec::new().set_fg(Some(color)))

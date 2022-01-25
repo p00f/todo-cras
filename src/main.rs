@@ -18,7 +18,7 @@
 */
 
 use std::path::PathBuf;
-use todo_cras::{display, edit_mode, help, read, HandleErr};
+use todo_cras::{color_print, display, edit_mode, help, read, HandleErr};
 
 use home::home_dir;
 
@@ -28,6 +28,11 @@ fn main() {
 
     let file = std::env::var_os("TODO_FILE")
         .map_or_else(|| home_dir().unwrap().join("todo.txt"), PathBuf::from);
+
+    if !file.exists() {
+        color_print(termcolor::Color::Red, "TODO_FILE does not exist");
+        return ();
+    }
 
     if let Some(arg) = args.next() {
         match arg.as_str() {
