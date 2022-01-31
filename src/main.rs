@@ -18,7 +18,7 @@
 */
 
 use std::path::PathBuf;
-use todo_cras::{color_print, display, edit_mode, help, read, HandleErr};
+use todo_cras::{display, edit_mode, help, ok_or_exit, read};
 
 use home::home_dir;
 
@@ -30,20 +30,19 @@ fn main() {
         .map_or_else(|| home_dir().unwrap().join("todo.txt"), PathBuf::from);
 
     if !file.exists() {
-        color_print(termcolor::Color::Red, "TODO_FILE does not exist");
-        return ();
+        ok_or_exit::<(), &str>(Err("TODO_FILE does not exist"));
     }
 
     if let Some(arg) = args.next() {
         match arg.as_str() {
             // Edit mode.
             "-e" => {
-                edit_mode(&file).ok_or_exit();
+                ok_or_exit(edit_mode(&file));
             }
 
             // Display mode, with probability. Useful as shell greeting.
             "-p" => {
-                let (tasks, categories) = read(&file).ok_or_exit();
+                let (tasks, categories) = ok_or_exit(read(&file));
                 display(&categories, tasks, true);
             }
 
@@ -53,7 +52,7 @@ fn main() {
     } else {
         // Display mode, without probability. Useful as command.
 
-        let (tasks, categories) = read(&file).ok_or_exit();
+        let (tasks, categories) = ok_or_exit(read(&file));
         display(&categories, tasks, false);
     }
 }

@@ -513,19 +513,11 @@ fn clear() {
         .success());
 }
 
-pub trait HandleErr {
-    type Inner;
-    fn ok_or_exit(self) -> Self::Inner;
-}
-
-impl<T, E: Display> HandleErr for Result<T, E> {
-    type Inner = T;
-    fn ok_or_exit(self) -> T {
-        self.unwrap_or_else(|err| {
-            color_print(Color::Red, &err.to_string());
-            exit(1);
-        })
-    }
+pub fn ok_or_exit<T, E: Display>(result: Result<T, E>) -> T {
+    result.unwrap_or_else(|err| {
+        color_print(Color::Red, &err.to_string());
+        exit(1);
+    })
 }
 
 pub fn color_print(color: Color, text: &str) {
