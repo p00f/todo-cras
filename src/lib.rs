@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2021 Chinmay Dalal
+  Copyright (C) 2021-22 Chinmay Dalal
 
   This file is part of todo-cras.
 
@@ -520,7 +520,7 @@ pub fn ok_or_exit<T, E: Display>(result: Result<T, E>) -> T {
     })
 }
 
-pub fn color_print(color: Color, text: &str) {
+fn color_print(color: Color, text: &str) {
     let mut color_stream = StandardStream::stdout(Auto);
     color_stream
         .set_color(ColorSpec::new().set_fg(Some(color)))
